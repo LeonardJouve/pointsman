@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/openai/openai-go/v3/shared"
 
+	"github.com/LeonardJouve/pointsman/agent"
 	"github.com/LeonardJouve/pointsman/tool"
 )
 
@@ -35,23 +37,50 @@ func serve(t *testing.T, reply string) (*Client, *map[string]any) {
 	return New(server.URL, "key"), &got
 }
 
-func TestCompleteWithoutTools(t *testing.T) {
+func TestSendWithoutTools(t *testing.T) {
 	client, got := serve(t, `{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`)
 
-	if _, err := client.Complete(context.Background(), "m", nil, []Message{User("x")}); err != nil {
+	if _, err := client.Send(context.Background(), agent.Agent{}, []Message{User("x")}); err != nil {
 		t.Fatal(err)
 	}
 
 	if _, ok := (*got)["tools"]; ok {
 		t.Error("tools sent while nil")
 	}
+
+	for _, key := range []string{"reasoning_effort", "max_completion_tokens"} {
+		if _, ok := (*got)[key]; ok {
+			t.Errorf("%s sent while zero", key)
+		}
+	}
 }
 
-func TestCompleteTools(t *testing.T) {
+func TestSendAgent(t *testing.T) {
+	client, got := serve(t, `{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`)
+	a := agent.New("m", "be brief", nil, agent.Config{Effort: shared.ReasoningEffortMedium, MaxTokens: 100})
+
+	if _, err := client.Send(context.Background(), a, []Message{User("x")}); err != nil {
+		t.Fatal(err)
+	}
+
+	messages := (*got)["messages"].([]any)
+	first := messages[0].(map[string]any)
+	second := messages[1].(map[string]any)
+	if (*got)["model"] != "m" || len(messages) != 2 || first["role"] != "system" || first["content"] != "be brief" ||
+		second["role"] != "user" || second["content"] != "x" {
+		t.Errorf("model = %v, messages = %+v", (*got)["model"], messages)
+	}
+
+	if (*got)["reasoning_effort"] != "medium" || (*got)["max_completion_tokens"] != float64(100) {
+		t.Errorf("config = %v, %v", (*got)["reasoning_effort"], (*got)["max_completion_tokens"])
+	}
+}
+
+func TestSendTools(t *testing.T) {
 	client, got := serve(t, `{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`)
 	schemas := []tool.Schema{tool.New("look", "d", &jsonschema.Schema{Type: "object"})}
 
-	if _, err := client.Complete(context.Background(), "m", schemas, nil); err != nil {
+	if _, err := client.Send(context.Background(), agent.Agent{Tools: schemas}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -64,19 +93,19 @@ func TestCompleteTools(t *testing.T) {
 	}
 }
 
-func TestCompleteBadSchema(t *testing.T) {
+func TestSendBadSchema(t *testing.T) {
 	client, _ := serve(t, `{"choices":[]}`)
 	schemas := []tool.Schema{tool.New("look", "d", &jsonschema.Schema{Type: "object", Types: []string{"object"}})}
 
-	if _, err := client.Complete(context.Background(), "m", schemas, nil); err == nil {
+	if _, err := client.Send(context.Background(), agent.Agent{Tools: schemas}, nil); err == nil {
 		t.Error("want an error")
 	}
 }
 
-func TestCompleteReply(t *testing.T) {
+func TestSendReply(t *testing.T) {
 	client, _ := serve(t, `{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`)
 
-	reply, err := client.Complete(context.Background(), "m", nil, nil)
+	reply, err := client.Send(context.Background(), agent.Agent{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +116,7 @@ func TestCompleteReply(t *testing.T) {
 
 	client, _ = serve(t, toolCallReply)
 
-	reply, err = client.Complete(context.Background(), "m", nil, nil)
+	reply, err = client.Send(context.Background(), agent.Agent{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,10 +131,10 @@ func TestCompleteReply(t *testing.T) {
 	}
 }
 
-func TestCompleteNoChoices(t *testing.T) {
+func TestSendNoChoices(t *testing.T) {
 	client, _ := serve(t, `{"choices":[]}`)
 
-	if _, err := client.Complete(context.Background(), "m", nil, nil); err == nil {
+	if _, err := client.Send(context.Background(), agent.Agent{}, nil); err == nil {
 		t.Error("want an error")
 	}
 }

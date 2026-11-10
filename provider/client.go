@@ -7,7 +7,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 
-	"github.com/LeonardJouve/pointsman/tool"
+	"github.com/LeonardJouve/pointsman/agent"
 )
 
 type Client struct {
@@ -22,17 +22,24 @@ func New(baseURL, apiKey string) *Client {
 	)}
 }
 
-func (c *Client) Complete(ctx context.Context, model string, schemas []tool.Schema, messages []Message) (Reply, error) {
-	tools, err := c.Tools(schemas)
+func (c *Client) Send(ctx context.Context, a agent.Agent, messages []Message) (Reply, error) {
+	tools, err := c.Tools(a.Tools)
 	if err != nil {
 		return Reply{}, err
 	}
 
-	completion, err := c.sdk.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model:    model,
-		Tools:    tools,
-		Messages: messages,
-	})
+	params := openai.ChatCompletionNewParams{
+		Model:           a.Model,
+		Tools:           tools,
+		Messages:        append([]Message{System(a.Prompt)}, messages...),
+		ReasoningEffort: a.Config.Effort,
+	}
+
+	if a.Config.MaxTokens > 0 {
+		params.MaxCompletionTokens = openai.Int(int64(a.Config.MaxTokens))
+	}
+
+	completion, err := c.sdk.Chat.Completions.New(ctx, params)
 	if err != nil {
 		return Reply{}, err
 	}
