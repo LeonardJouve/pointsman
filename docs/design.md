@@ -6,9 +6,11 @@ what is built, the facts it rests on, what is next and open.
 ## Built
 
 **provider**: one OpenAI-compatible Chat Completions client (`openai-go/v3`).
-`Send(ctx, agent, messages)` returns the reply message: it prepends the agent's prompt (`build`, D9) and sends its
-model, tools and config. SDK retries are off: retries belong to the router (D16). `Message`, `Reply` and `Tool` are
-aliases of the SDK types; `System`, `User` and `ToolResult` build messages.
+`Context(agent, messages)` is the pure build function of D9: it prepends the agent's prompt and returns a `Request`
+with the agent's model, tools and config. `Request` is an alias of the SDK params: marshal it to see the body as
+sent. `Send(ctx, request)` makes the call and returns the reply message. SDK retries are off: retries belong to the
+router (D16). `Message`, `Reply`, `Tool` and `Request` are aliases of the SDK types; `System`, `User` and
+`ToolResult` build messages.
 
 **agent**: config only, no runtime state (SPEC §3); the context (the log) belongs to the session, so many sessions
 share one agent. `agent.New(model, prompt, tools, config)` returns `Agent{Model, Prompt, Tools, Config}`, with
@@ -22,8 +24,13 @@ share one agent. `agent.New(model, prompt, tools, config)` returns `Agent{Model,
   kind (D20), sandbox or worker, the same way for every tool; that comes with dispatch.
 - `Parameters` is a `*jsonschema.Schema` (`google/jsonschema-go`); `tool.New(name, description, parameters)` builds
   a `Schema`.
-- `provider.Client.Tools` converts schemas to the wire format (the SDK's map) and returns the conversion error, which
-  `Send` passes on. It is a method on the client because the format belongs to the provider.
+- `provider.Tools` converts schemas to the wire format (the SDK's map) and returns the conversion error, which
+  `Context` passes on. It is a plain function.
+
+**session**: `Session{ID, Agent, Messages}`. `session.New(agent)` returns a `*Session` with a random ID
+(stdlib `uuid.New()`; V7 if sorting by creation is ever needed) and no messages. `AppendUser`, `AppendReply` and
+`AppendToolResult` are the only way the loop writes the log; a log entry is a `provider.Message`. The ID never reaches
+the model (D3): `Context` takes the agent and the messages only.
 
 ## Facts: the Chat Completions context
 
@@ -40,14 +47,11 @@ share one agent. `agent.New(model, prompt, tools, config)` returns `Agent{Model,
 
 ## Next
 
-The session loop: the log (the context) and its use of `Send`; `build` is already in `Send`. Streaming is a
-change of its own (it changes how `Send` reads the response, D30).
+The session loop: `Send`, append the reply, stop when the reply has no tool calls; tool execution comes with
+dispatch. Streaming is a change of its own (it changes how `Send` reads the response, D30).
 
 ## Open
 
-- **Log entry shape.** A: an entry is a `provider.Message` (recommended: no new type, `build` prepends the prompt).
-  B: an own `Entry` type converted by `build`. A capture of a second request (after a tool call) and of a response
-  stream would show whether a reply carries what `Message` cannot hold.
 - **Truncated replies.** `finish_reason == "length"` is a partial response (D10): `Send` should return an error
   or the reason.
 - **`developer` or `system` role.** Some OpenAI-compatible servers reject `developer`; `provider` has only `System`.

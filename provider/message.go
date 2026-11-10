@@ -27,7 +27,7 @@ func ToolResult(callID, output string) Message {
 	return openai.ToolMessage(output, callID)
 }
 
-func (c *Client) Tools(schemas []tool.Schema) ([]Tool, error) {
+func Tools(schemas []tool.Schema) ([]Tool, error) {
 	if len(schemas) == 0 {
 		return nil, nil
 	}

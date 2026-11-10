@@ -22,13 +22,15 @@ func New(baseURL, apiKey string) *Client {
 	)}
 }
 
-func (c *Client) Send(ctx context.Context, a agent.Agent, messages []Message) (Reply, error) {
-	tools, err := c.Tools(a.Tools)
+type Request = openai.ChatCompletionNewParams
+
+func Context(a agent.Agent, messages []Message) (Request, error) {
+	tools, err := Tools(a.Tools)
 	if err != nil {
-		return Reply{}, err
+		return Request{}, err
 	}
 
-	params := openai.ChatCompletionNewParams{
+	request := Request{
 		Model:           a.Model,
 		Tools:           tools,
 		Messages:        append([]Message{System(a.Prompt)}, messages...),
@@ -36,10 +38,14 @@ func (c *Client) Send(ctx context.Context, a agent.Agent, messages []Message) (R
 	}
 
 	if a.Config.MaxTokens > 0 {
-		params.MaxCompletionTokens = openai.Int(int64(a.Config.MaxTokens))
+		request.MaxCompletionTokens = openai.Int(int64(a.Config.MaxTokens))
 	}
 
-	completion, err := c.sdk.Chat.Completions.New(ctx, params)
+	return request, nil
+}
+
+func (c *Client) Send(ctx context.Context, request Request) (Reply, error) {
+	completion, err := c.sdk.Chat.Completions.New(ctx, request)
 	if err != nil {
 		return Reply{}, err
 	}

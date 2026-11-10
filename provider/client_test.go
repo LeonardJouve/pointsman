@@ -40,7 +40,12 @@ func serve(t *testing.T, reply string) (*Client, *map[string]any) {
 func TestSendWithoutTools(t *testing.T) {
 	client, got := serve(t, `{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`)
 
-	if _, err := client.Send(context.Background(), agent.Agent{}, []Message{User("x")}); err != nil {
+	request, err := Context(agent.Agent{}, []Message{User("x")})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := client.Send(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
 
@@ -59,7 +64,12 @@ func TestSendAgent(t *testing.T) {
 	client, got := serve(t, `{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`)
 	a := agent.New("m", "be brief", nil, agent.Config{Effort: shared.ReasoningEffortMedium, MaxTokens: 100})
 
-	if _, err := client.Send(context.Background(), a, []Message{User("x")}); err != nil {
+	request, err := Context(a, []Message{User("x")})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := client.Send(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
 
@@ -80,7 +90,12 @@ func TestSendTools(t *testing.T) {
 	client, got := serve(t, `{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`)
 	schemas := []tool.Schema{tool.New("look", "d", &jsonschema.Schema{Type: "object"})}
 
-	if _, err := client.Send(context.Background(), agent.Agent{Tools: schemas}, nil); err != nil {
+	request, err := Context(agent.Agent{Tools: schemas}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := client.Send(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
 
@@ -93,11 +108,10 @@ func TestSendTools(t *testing.T) {
 	}
 }
 
-func TestSendBadSchema(t *testing.T) {
-	client, _ := serve(t, `{"choices":[]}`)
+func TestContextBadSchema(t *testing.T) {
 	schemas := []tool.Schema{tool.New("look", "d", &jsonschema.Schema{Type: "object", Types: []string{"object"}})}
 
-	if _, err := client.Send(context.Background(), agent.Agent{Tools: schemas}, nil); err == nil {
+	if _, err := Context(agent.Agent{Tools: schemas}, nil); err == nil {
 		t.Error("want an error")
 	}
 }
@@ -105,7 +119,7 @@ func TestSendBadSchema(t *testing.T) {
 func TestSendReply(t *testing.T) {
 	client, _ := serve(t, `{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`)
 
-	reply, err := client.Send(context.Background(), agent.Agent{}, nil)
+	reply, err := client.Send(context.Background(), Request{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +130,7 @@ func TestSendReply(t *testing.T) {
 
 	client, _ = serve(t, toolCallReply)
 
-	reply, err = client.Send(context.Background(), agent.Agent{}, nil)
+	reply, err = client.Send(context.Background(), Request{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +148,7 @@ func TestSendReply(t *testing.T) {
 func TestSendNoChoices(t *testing.T) {
 	client, _ := serve(t, `{"choices":[]}`)
 
-	if _, err := client.Send(context.Background(), agent.Agent{}, nil); err == nil {
+	if _, err := client.Send(context.Background(), Request{}); err == nil {
 		t.Error("want an error")
 	}
 }
