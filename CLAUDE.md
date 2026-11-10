@@ -24,6 +24,12 @@ A change is one concept (a package, a type, a boundary), stands alone, leaves bu
 reviewable in about 15 minutes (a few hundred lines with tests). Build bottom-up: the piece that depends on nothing
 first.
 
+## Project skills
+
+- **code-design-principles**: the design rules behind the values below. The developer agent loads it before writing
+  or reviewing code; the coordinator checks a change against it before presenting.
+- **show-me**: invoked by the user only (`/show-me`), to see the current topic as a diagram or code-shape sketch.
+
 ## Putting a decision to the user
 
 The user is the bottleneck and does not know every piece of the code. So:
