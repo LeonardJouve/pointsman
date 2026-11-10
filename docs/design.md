@@ -20,8 +20,8 @@ share one agent. `agent.New(model, prompt, tools, config)` returns `Agent{Model,
 - `provider` imports `agent`, never the reverse.
 
 **tool**: `Schema{Name, Description, Parameters}`, a tool's declaration as sent to the model.
-- Data, not an interface with `Run`: the router never runs tool logic (SPEC §1). A call is executed by its routing
-  kind (D20), sandbox or worker, the same way for every tool; that comes with dispatch.
+- Data, not an interface with `Run`: the router never runs tool logic (SPEC §1). The tool instances live in the
+  dispatcher.
 - `Parameters` is a `*jsonschema.Schema` (`google/jsonschema-go`); `tool.New(name, description, parameters)` builds
   a `Schema`.
 - `provider.Tools` converts schemas to the wire format (the SDK's map) and returns the conversion error, which
@@ -47,13 +47,49 @@ the model (D3): `Context` takes the agent and the messages only.
 
 ## Next
 
-The session loop: `Send`, append the reply, stop when the reply has no tool calls; tool execution comes with
-dispatch. Streaming is a change of its own (it changes how `Send` reads the response, D30).
+Dispatch. The router sends each tool call over gRPC to a dispatcher, a separate process that holds the tool
+instances. A tool is a function there: it may start a Docker container (one per call, the session's workspace
+mounted) or run directly. The router never runs tool logic (SPEC §1, D2). The contract:
+```proto
+service Dispatcher {
+  rpc Call(Request) returns (Result);
+}
+
+message Request {
+  string session_id = 1; // the dispatcher finds the session's workspace from it
+  string call_id    = 2; // also the idempotency key (D23)
+  string name       = 3; // the tool
+  string arguments  = 4; // the model's JSON, passed through
+}
+
+message Result {
+  string output = 1;
+  uint32 code   = 2; // 0 = success; a Docker tool returns the container's exit code
+}
+```
+A tool error is a `Result` with `code != 0`, sent to the model. An infrastructure error (dispatcher down, Docker
+failure, unknown tool) is a gRPC status error, handled by the router (D24). The model sees only text, so the router
+writes a non-zero code into the tool message; how comes with the loop. Large outputs (D25), streaming output and tool
+listing are left out until their piece. MCP was weighed and set aside: its gains (tool discovery, reuse of existing
+servers) do not apply, and it is a large dependency with its own session state.
+
+The contract is in `dispatch/dispatch.proto`; regenerate with `go generate ./dispatch` (needs protoc,
+protoc-gen-go and protoc-gen-go-grpc on PATH).
+
+Layout: one Go module. The two apps will be `cmd/router` and `cmd/dispatcher`, each added by the change that writes
+its `main`; the library packages stay where they are.
+
+Then the session loop, built on dispatch: `Send`, append the reply, run each tool call, stop when the reply has no
+tool calls. Streaming is a change of its own (it changes how `Send` reads the response, D30).
 
 ## Open
 
 - **Truncated replies.** `finish_reason == "length"` is a partial response (D10): `Send` should return an error
   or the reason.
+- **Workspace storage.** Who owns it (the dispatcher, from the `session_id`?) and when is it deleted (with the
+  session?).
+- **Where a tool's schema lives.** `agent.Tools` holds schemas while the dispatcher holds the tool instances: one
+  source of truth would put the schema with the instance, and the agent would only name its tools.
 - **`developer` or `system` role.** Some OpenAI-compatible servers reject `developer`; `provider` has only `System`.
 
 ## Deferred

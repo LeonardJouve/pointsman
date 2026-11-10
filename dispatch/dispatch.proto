@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package dispatch;
+
+option go_package = "github.com/LeonardJouve/pointsman/dispatch";
+
+service Dispatcher {
+  rpc Call(Request) returns (Result);
+}
+
+message Request {
+  string session_id = 1; // the dispatcher finds the session's workspace from it
+  string call_id    = 2; // also the idempotency key
+  string name       = 3; // the tool
+  string arguments  = 4; // the model's JSON, passed through
+}
+
+message Result {
+  string output = 1;
+  uint32 code   = 2;
+}
