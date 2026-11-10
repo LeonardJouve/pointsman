@@ -26,6 +26,17 @@ share one agent. `agent.New(model, prompt, tools, config)` returns `Agent{Model,
   a `Schema`.
 - `provider.Tools` converts schemas to the wire format (the SDK's map) and returns the conversion error, which
   `Context` passes on. It is a plain function.
+- `Tool{Schema, Run}` pairs a schema with its function,
+  `Run func(ctx, arguments string) (output string, code uint32, err error)`: `arguments` is the model's JSON, parsed
+  by the tool; `err` is an infrastructure error. The router imports a tool for its schema (`agent` and `provider`
+  unchanged), the dispatcher for its function. One module builds both apps from one commit, so the two cannot drift;
+  a `List` RPC would replace the import only if tools must be deployed without the router. The workspace parameter
+  comes with the Docker tool, and so does where tool instances live.
+
+**dispatch**: the gRPC contract (below) and `NewServer(tools []tool.Tool)`, which implements `Dispatcher.Call`: it
+looks the tool up by `Schema.Name` (a name is written once), runs it and returns the `Result`. An unknown tool and an
+error from `Run` are plain Go errors: they reach the router as gRPC `Unknown`; codes come with the loop if its policy
+needs them. Tests call `Call` directly, without a gRPC server.
 
 **session**: `Session{ID, Agent, Messages}`. `session.New(agent)` returns a `*Session` with a random ID
 (stdlib `uuid.New()`; V7 if sorting by creation is ever needed) and no messages. `AppendUser`, `AppendReply` and
@@ -79,20 +90,10 @@ protoc-gen-go and protoc-gen-go-grpc on PATH).
 Layout: one Go module. The two apps will be `cmd/router` and `cmd/dispatcher`, each added by the change that writes
 its `main`; the library packages stay where they are.
 
-Plan, bottom-up; one piece is one change, and each lists the decisions it needs (none taken yet):
-1. **Tools.** One shared package holds each tool once: its schema and its function together. The router imports it
-   for the schemas (`agent` and `provider` unchanged), the dispatcher for the functions, looked up by name. One
-   module builds both apps from one commit, so the two cannot drift; a `List` RPC would replace the import only if
-   tools must be deployed without the router. The function is
-   `func(ctx context.Context, arguments string) (output string, code uint32, err error)`: `arguments` is the model's
-   JSON, parsed by the tool; `err` is an infrastructure error. The workspace parameter comes with piece 4. It is
-   `tool.Tool{Schema, Run}`, next to `tool.Schema`. Where tool instances live is decided with piece 4.
-2. **Dispatcher server.** `dispatch.NewServer(tools []tool.Tool)` in `dispatch/server.go` implements
-   `Dispatcher.Call`: looks the tool up by `Schema.Name` (built once from the slice, so a name is written once), runs
-   it, returns the `Result`. An unknown tool and an error from `Run` are plain Go errors (no `status`, no gRPC code
-   chosen; they reach the router as gRPC `Unknown`); codes come with piece 5 if its policy needs them. Tests call
-   `Call` directly, without a gRPC server.
-3. **`cmd/dispatcher`.** The `main`: listen and serve. Needs: how the address is given (flag, env).
+Plan, bottom-up; one piece is one change, and each lists the decisions it needs (pieces 1-2, tools and the
+server, are built):
+3. **`cmd/dispatcher`.** The `main`: listen on the `-addr` flag (default `localhost:50051`, below the OS's
+   ephemeral port range) and serve `dispatch.NewServer` with the tool list, empty until piece 4.
 4. **A Docker tool.** A function that runs `docker run --rm` through `os/exec`, the session's workspace mounted,
    arguments on stdin, exit code as `code`. Needs: workspace storage (Open), the image, the network policy, how
    Docker's own failures (exit 125-127) become infrastructure errors.
