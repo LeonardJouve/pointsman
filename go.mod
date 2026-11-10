@@ -2,7 +2,10 @@ module github.com/LeonardJouve/pointsman
 
 go 1.27
 
-require github.com/openai/openai-go/v3 v3.98.0
+require (
+	github.com/google/jsonschema-go v0.4.3
+	github.com/openai/openai-go/v3 v3.98.0
+)
 
 require (
 	github.com/coder/websocket v1.8.15 // indirect

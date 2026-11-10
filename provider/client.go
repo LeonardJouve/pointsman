@@ -6,6 +6,8 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
+
+	"github.com/LeonardJouve/pointsman/tool"
 )
 
 type Client struct {
@@ -13,7 +15,6 @@ type Client struct {
 }
 
 func New(baseURL, apiKey string) *Client {
-	// Retries belong to the router, not to the SDK.
 	return &Client{sdk: openai.NewClient(
 		option.WithBaseURL(baseURL),
 		option.WithAPIKey(apiKey),
@@ -21,7 +22,12 @@ func New(baseURL, apiKey string) *Client {
 	)}
 }
 
-func (c *Client) Complete(ctx context.Context, model string, tools []Tool, messages []Message) (Reply, error) {
+func (c *Client) Complete(ctx context.Context, model string, schemas []tool.Schema, messages []Message) (Reply, error) {
+	tools, err := c.Tools(schemas)
+	if err != nil {
+		return Reply{}, err
+	}
+
 	completion, err := c.sdk.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Model:    model,
 		Tools:    tools,
