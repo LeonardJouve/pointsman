@@ -1,0 +1,52 @@
+package dispatch
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/LeonardJouve/pointsman/tool"
+)
+
+var errBroken = errors.New("broken")
+
+func tools() []tool.Tool {
+	return []tool.Tool{
+		{
+			Schema: tool.Schema{Name: "echo"},
+			Run: func(ctx context.Context, arguments string) (string, uint32, error) {
+				return arguments, 3, nil
+			},
+		},
+		{
+			Schema: tool.Schema{Name: "broken"},
+			Run: func(ctx context.Context, arguments string) (string, uint32, error) {
+				return "", 0, errBroken
+			},
+		},
+	}
+}
+
+func TestCall(t *testing.T) {
+	result, err := NewServer(tools()).Call(context.Background(), &Request{Name: "echo", Arguments: `{"a":1}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Output != `{"a":1}` || result.Code != 3 {
+		t.Errorf("got output %q code %d, want %q code 3", result.Output, result.Code, `{"a":1}`)
+	}
+}
+
+func TestCallUnknownTool(t *testing.T) {
+	if _, err := NewServer(tools()).Call(context.Background(), &Request{Name: "missing"}); err == nil {
+		t.Error("want an error for an unknown tool")
+	}
+}
+
+func TestCallRunError(t *testing.T) {
+	_, err := NewServer(tools()).Call(context.Background(), &Request{Name: "broken"})
+	if !errors.Is(err, errBroken) {
+		t.Errorf("got error %v, want %v", err, errBroken)
+	}
+}

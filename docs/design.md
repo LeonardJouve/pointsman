@@ -79,8 +79,30 @@ protoc-gen-go and protoc-gen-go-grpc on PATH).
 Layout: one Go module. The two apps will be `cmd/router` and `cmd/dispatcher`, each added by the change that writes
 its `main`; the library packages stay where they are.
 
-Then the session loop, built on dispatch: `Send`, append the reply, run each tool call, stop when the reply has no
-tool calls. Streaming is a change of its own (it changes how `Send` reads the response, D30).
+Plan, bottom-up; one piece is one change, and each lists the decisions it needs (none taken yet):
+1. **Tools.** One shared package holds each tool once: its schema and its function together. The router imports it
+   for the schemas (`agent` and `provider` unchanged), the dispatcher for the functions, looked up by name. One
+   module builds both apps from one commit, so the two cannot drift; a `List` RPC would replace the import only if
+   tools must be deployed without the router. The function is
+   `func(ctx context.Context, arguments string) (output string, code uint32, err error)`: `arguments` is the model's
+   JSON, parsed by the tool; `err` is an infrastructure error. The workspace parameter comes with piece 4. It is
+   `tool.Tool{Schema, Run}`, next to `tool.Schema`. Where tool instances live is decided with piece 4.
+2. **Dispatcher server.** `dispatch.NewServer(tools []tool.Tool)` in `dispatch/server.go` implements
+   `Dispatcher.Call`: looks the tool up by `Schema.Name` (built once from the slice, so a name is written once), runs
+   it, returns the `Result`. An unknown tool and an error from `Run` are plain Go errors (no `status`, no gRPC code
+   chosen; they reach the router as gRPC `Unknown`); codes come with piece 5 if its policy needs them. Tests call
+   `Call` directly, without a gRPC server.
+3. **`cmd/dispatcher`.** The `main`: listen and serve. Needs: how the address is given (flag, env).
+4. **A Docker tool.** A function that runs `docker run --rm` through `os/exec`, the session's workspace mounted,
+   arguments on stdin, exit code as `code`. Needs: workspace storage (Open), the image, the network policy, how
+   Docker's own failures (exit 125-127) become infrastructure errors.
+5. **The session loop.** `Send`, append the reply, call the dispatcher for each tool call, append each result, stop
+   when the reply has no tool calls. Needs: where the loop lives and its signature; how a non-zero code is written
+   into the tool message; truncated replies (Open); what the loop does with an infrastructure error.
+6. **`cmd/router`.** The `main` that wires provider, session and the dispatcher client. Needs: config loading (agent
+   from YAML?), and what starts a session (D32's client interface, or a CLI first).
+
+Streaming is a change of its own (it changes how `Send` reads the response, D30).
 
 ## Open
 
@@ -88,8 +110,6 @@ tool calls. Streaming is a change of its own (it changes how `Send` reads the re
   or the reason.
 - **Workspace storage.** Who owns it (the dispatcher, from the `session_id`?) and when is it deleted (with the
   session?).
-- **Where a tool's schema lives.** `agent.Tools` holds schemas while the dispatcher holds the tool instances: one
-  source of truth would put the schema with the instance, and the agent would only name its tools.
 - **`developer` or `system` role.** Some OpenAI-compatible servers reject `developer`; `provider` has only `System`.
 
 ## Deferred
