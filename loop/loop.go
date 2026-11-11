@@ -11,8 +11,18 @@ import (
 	"github.com/LeonardJouve/pointsman/session"
 )
 
-// Run sends the log to the model until a reply has no tool calls. On an error the log is left as it was.
-func Run(ctx context.Context, s *session.Session, client *provider.Client, dispatcher dispatch.DispatcherClient) error {
+// Run sends the log to the model until a reply has no tool calls, then sets the status to Succeeded.
+// On an error the log is left as it was and the status is Failed.
+func Run(ctx context.Context, s *session.Session, client *provider.Client, dispatcher dispatch.DispatcherClient) (err error) {
+	defer func() {
+		if err != nil {
+			s.SetStatus(session.Failed)
+			return
+		}
+
+		s.SetStatus(session.Succeeded)
+	}()
+
 	for {
 		request, err := provider.Context(s.Agent, s.Messages())
 		if err != nil {

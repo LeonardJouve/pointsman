@@ -9,12 +9,12 @@ import (
 	"github.com/LeonardJouve/pointsman/provider"
 )
 
-type Status uint8
+type Status string
 
 const (
-	Running Status = iota
-	Succeeded
-	Failed
+	Running   Status = "running"
+	Succeeded Status = "succeeded"
+	Failed    Status = "failed"
 )
 
 type Session struct {
@@ -26,7 +26,7 @@ type Session struct {
 }
 
 func New(a agent.Agent) *Session {
-	return &Session{ID: uuid.New(), Agent: a}
+	return &Session{ID: uuid.New(), Agent: a, status: Running}
 }
 
 func (s *Session) AppendUser(text string) {

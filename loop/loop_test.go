@@ -90,6 +90,10 @@ func TestRunNoToolCalls(t *testing.T) {
 	if got := roles(s); got != "user assistant" {
 		t.Errorf("roles = %s", got)
 	}
+
+	if got := s.Status(); got != session.Succeeded {
+		t.Errorf("status = %s", got)
+	}
 }
 
 func TestRunToolCalls(t *testing.T) {
@@ -113,6 +117,10 @@ func TestRunToolCalls(t *testing.T) {
 	if s.Messages()[2].OfTool.ToolCallID != "a" || toolContent(s, 2) != "out1" ||
 		s.Messages()[3].OfTool.ToolCallID != "b" || toolContent(s, 3) != "out2" {
 		t.Errorf("results = %+v, %+v", s.Messages()[2], s.Messages()[3])
+	}
+
+	if got := s.Status(); got != session.Succeeded {
+		t.Errorf("status = %s", got)
 	}
 }
 
@@ -156,5 +164,9 @@ func TestRunDispatcherError(t *testing.T) {
 
 	if got := roles(s); got != "user" {
 		t.Errorf("roles = %s", got)
+	}
+
+	if got := s.Status(); got != session.Failed {
+		t.Errorf("status = %s", got)
 	}
 }

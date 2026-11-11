@@ -11,7 +11,7 @@ import (
 func do(t *testing.T, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 
-	handler := New().Handler()
+	handler := New(nil, nil).Handler()
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(method, path, strings.NewReader(body)))
 
@@ -19,7 +19,7 @@ func do(t *testing.T, method, path, body string) *httptest.ResponseRecorder {
 }
 
 func TestCreateAndListAgents(t *testing.T) {
-	handler := New().Handler()
+	handler := New(nil, nil).Handler()
 	const request = `{"model":"m","prompt":"p","tools":["write"],"effort":"low","max_tokens":10}`
 
 	created := httptest.NewRecorder()
