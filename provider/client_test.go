@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -150,5 +151,13 @@ func TestSendNoChoices(t *testing.T) {
 
 	if _, err := client.Send(context.Background(), Request{}); err == nil {
 		t.Error("want an error")
+	}
+}
+
+func TestSendTruncated(t *testing.T) {
+	client, _ := serve(t, `{"choices":[{"finish_reason":"length","message":{"role":"assistant","content":"hi"}}]}`)
+
+	if _, err := client.Send(context.Background(), Request{}); !errors.Is(err, ErrTruncated) {
+		t.Errorf("err = %v, want ErrTruncated", err)
 	}
 }

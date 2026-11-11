@@ -54,5 +54,10 @@ func (c *Client) Send(ctx context.Context, request Request) (Reply, error) {
 		return Reply{}, errors.New("provider: response has no choices")
 	}
 
-	return completion.Choices[0].Message, nil
+	choice := completion.Choices[0]
+	if choice.FinishReason == "length" {
+		return Reply{}, errors.New("provider: reply truncated")
+	}
+
+	return choice.Message, nil
 }
