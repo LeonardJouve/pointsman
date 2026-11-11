@@ -27,21 +27,39 @@ share one agent. `agent.New(model, prompt, tools, config)` returns `Agent{Model,
 - `provider.Tools` converts schemas to the wire format (the SDK's map) and returns the conversion error, which
   `Context` passes on. It is a plain function.
 - `Tool{Schema, Run}` pairs a schema with its function,
-  `Run func(ctx, arguments string) (output string, code uint32, err error)`: `arguments` is the model's JSON, parsed
-  by the tool; `err` is an infrastructure error. The router imports a tool for its schema (`agent` and `provider`
+  `Run func(ctx, arguments string) (output string, code uint32)`: `arguments` is the model's JSON, parsed by the
+  tool; a tool failure is a non-zero `code` with the message as `output`. A tool has no error path: errors are the
+  dispatcher's own (an unknown tool). The router imports a tool for its schema (`agent` and `provider`
   unchanged), the dispatcher for its function. One module builds both apps from one commit, so the two cannot drift;
   a `List` RPC would replace the import only if tools must be deployed without the router. The workspace parameter
   comes with the Docker tool, and so does where tool instances live.
 
 **dispatch**: the gRPC contract (below) and `NewServer(tools []tool.Tool)`, which implements `Dispatcher.Call`: it
-looks the tool up by `Schema.Name` (a name is written once), runs it and returns the `Result`. An unknown tool and an
-error from `Run` are plain Go errors: they reach the router as gRPC `Unknown`; codes come with the loop if its policy
-needs them. Tests call `Call` directly, without a gRPC server.
+looks the tool up by `Schema.Name` (a name is written once), runs it and returns the `Result`. An unknown tool is a
+plain Go error: it reaches the router as gRPC `Unknown`; codes come with the loop if its policy needs them. Tests
+call `Call` directly, without a gRPC server.
 
 **session**: `Session{ID, Agent, Messages}`. `session.New(agent)` returns a `*Session` with a random ID
 (stdlib `uuid.New()`; V7 if sorting by creation is ever needed) and no messages. `AppendUser`, `AppendReply` and
 `AppendToolResult` are the only way the loop writes the log; a log entry is a `provider.Message`. The ID never reaches
 the model (D3): `Context` takes the agent and the messages only.
+
+**tools `read` and `write`** (constructors `tool.Read()` and `tool.Write()`, returning the schema-generation error):
+copies of pi's, same names, parameters, descriptions and limits (2000 lines or 50KB, from the constants that enforce
+them). They run directly in the dispatcher, no Docker.
+- The parameters schema is generated from the argument struct (`jsonschema.For`, descriptions in `jsonschema` tags,
+  optional fields `omitzero`), so the struct is the one source of truth. The generated schema differs from pi's:
+  `offset` and `limit` are integers and `additionalProperties` is false. A `limit` of 0 or absent means no limit (pi
+  returns nothing for 0).
+- `read` is pi's text path only: no images. A first line over the byte limit gets a notice without a hint.
+- `read` continues with one note for every cut (line cap, byte cap or `limit`): `[Showing lines A-B of N. Use
+  offset=X to continue.]`, instead of pi's three variants.
+- Errors (missing file, bad offset, bad arguments JSON) are a `Result` with code 1 and the message as output.
+- Paths: relative ones start at `root` (`"."`, in `tool/tool.go`); absolute paths and `..` are not rejected, as in
+  pi. Confinement and the root come with workspaces.
+
+**cmd/dispatcher**: listens on the `-addr` flag (default `localhost:50051`, below the OS's ephemeral port range) and
+serves `dispatch.NewServer` with the tools from `tool.Read()` and `tool.Write()`; an error from either is fatal.
 
 ## Facts: the Chat Completions context
 
@@ -78,8 +96,8 @@ message Result {
   uint32 code   = 2; // 0 = success; a Docker tool returns the container's exit code
 }
 ```
-A tool error is a `Result` with `code != 0`, sent to the model. An infrastructure error (dispatcher down, Docker
-failure, unknown tool) is a gRPC status error, handled by the router (D24). The model sees only text, so the router
+A tool error is a `Result` with `code != 0`, sent to the model. A dispatcher error (dispatcher down, unknown
+tool) is a gRPC status error, handled by the router (D24). The model sees only text, so the router
 writes a non-zero code into the tool message; how comes with the loop. Large outputs (D25), streaming output and tool
 listing are left out until their piece. MCP was weighed and set aside: its gains (tool discovery, reuse of existing
 servers) do not apply, and it is a large dependency with its own session state.
@@ -90,13 +108,12 @@ protoc-gen-go and protoc-gen-go-grpc on PATH).
 Layout: one Go module. The two apps will be `cmd/router` and `cmd/dispatcher`, each added by the change that writes
 its `main`; the library packages stay where they are.
 
-Plan, bottom-up; one piece is one change, and each lists the decisions it needs (pieces 1-2, tools and the
-server, are built):
-3. **`cmd/dispatcher`.** The `main`: listen on the `-addr` flag (default `localhost:50051`, below the OS's
-   ephemeral port range) and serve `dispatch.NewServer` with the tool list, empty until piece 4.
-4. **A Docker tool.** A function that runs `docker run --rm` through `os/exec`, the session's workspace mounted,
-   arguments on stdin, exit code as `code`. Needs: workspace storage (Open), the image, the network policy, how
-   Docker's own failures (exit 125-127) become infrastructure errors.
+Plan, bottom-up; one piece is one change, and each lists the decisions it needs (pieces 1-3, tools, the
+server and `cmd/dispatcher`, are built):
+4. **A Docker tool** (deferred). A function that runs `docker run --rm` through `os/exec`, the session's workspace
+   mounted, arguments on stdin, exit code as `code`. Needs: workspace storage (Open), the image, the network
+   policy, how Docker's own failures (exit 125-127) are reported: a non-zero code with the message, or a way for
+   `Run` to report them.
 5. **The session loop.** `Send`, append the reply, call the dispatcher for each tool call, append each result, stop
    when the reply has no tool calls. Needs: where the loop lives and its signature; how a non-zero code is written
    into the tool message; truncated replies (Open); what the loop does with an infrastructure error.

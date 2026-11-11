@@ -27,10 +27,7 @@ func (s *server) Call(ctx context.Context, request *Request) (*Result, error) {
 		return nil, fmt.Errorf("unknown tool %q", request.Name)
 	}
 
-	output, code, err := t.Run(ctx, request.Arguments)
-	if err != nil {
-		return nil, err
-	}
+	output, code := t.Run(ctx, request.Arguments)
 
 	return &Result{Output: output, Code: code}, nil
 }
