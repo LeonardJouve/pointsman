@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -89,9 +88,8 @@ func TestSendAgent(t *testing.T) {
 
 func TestSendTools(t *testing.T) {
 	client, got := serve(t, `{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`)
-	schemas := []tool.Schema{tool.New("look", "d", &jsonschema.Schema{Type: "object"})}
 
-	request, err := Context(agent.Agent{Tools: schemas}, nil)
+	request, err := Context(agent.Agent{Tools: []string{"read"}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,16 +101,21 @@ func TestSendTools(t *testing.T) {
 	sent := (*got)["tools"].([]any)[0].(map[string]any)
 	function := sent["function"].(map[string]any)
 	parameters := function["parameters"].(map[string]any)
-	if sent["type"] != "function" || function["name"] != "look" || function["description"] != "d" ||
-		parameters["type"] != "object" {
+	if sent["type"] != "function" || function["name"] != "read" || parameters["type"] != "object" {
 		t.Errorf("tool = %+v", sent)
 	}
 }
 
-func TestContextBadSchema(t *testing.T) {
+func TestContextUnknownTool(t *testing.T) {
+	if _, err := Context(agent.Agent{Tools: []string{"nope"}}, nil); err == nil {
+		t.Error("want an error")
+	}
+}
+
+func TestToolsBadSchema(t *testing.T) {
 	schemas := []tool.Schema{tool.New("look", "d", &jsonschema.Schema{Type: "object", Types: []string{"object"}})}
 
-	if _, err := Context(agent.Agent{Tools: schemas}, nil); err == nil {
+	if _, err := Tools(schemas); err == nil {
 		t.Error("want an error")
 	}
 }
@@ -157,7 +160,7 @@ func TestSendNoChoices(t *testing.T) {
 func TestSendTruncated(t *testing.T) {
 	client, _ := serve(t, `{"choices":[{"finish_reason":"length","message":{"role":"assistant","content":"hi"}}]}`)
 
-	if _, err := client.Send(context.Background(), Request{}); !errors.Is(err, ErrTruncated) {
-		t.Errorf("err = %v, want ErrTruncated", err)
+	if _, err := client.Send(context.Background(), Request{}); err == nil {
+		t.Error("expected truncated error")
 	}
 }

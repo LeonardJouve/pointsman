@@ -20,18 +20,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	read, err := tool.Read()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	write, err := tool.Write()
+	tools, err := tool.All()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	s := grpc.NewServer()
-	dispatch.RegisterDispatcherServer(s, dispatch.NewServer([]tool.Tool{read, write}))
+	dispatch.RegisterDispatcherServer(s, dispatch.NewServer(tools))
 
 	log.Fatal(s.Serve(listener))
 }

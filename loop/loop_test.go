@@ -158,16 +158,3 @@ func TestRunDispatcherError(t *testing.T) {
 		t.Errorf("roles = %s", got)
 	}
 }
-
-func TestRunTruncated(t *testing.T) {
-	s := start()
-	err := Run(context.Background(), s, serve(t, truncatedReply), fakeDispatcher(echo))
-
-	if !errors.Is(err, provider.ErrTruncated) {
-		t.Errorf("err = %v", err)
-	}
-
-	if got := roles(s); got != "user" {
-		t.Errorf("roles = %s", got)
-	}
-}

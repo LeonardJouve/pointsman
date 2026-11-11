@@ -8,6 +8,7 @@ import (
 	"github.com/openai/openai-go/v3/option"
 
 	"github.com/LeonardJouve/pointsman/agent"
+	"github.com/LeonardJouve/pointsman/tool"
 )
 
 type Client struct {
@@ -25,7 +26,17 @@ func New(baseURL, apiKey string) *Client {
 type Request = openai.ChatCompletionNewParams
 
 func Context(a agent.Agent, messages []Message) (Request, error) {
-	tools, err := Tools(a.Tools)
+	var schemas []tool.Schema
+	for _, name := range a.Tools {
+		t, err := tool.Get(name)
+		if err != nil {
+			return Request{}, err
+		}
+
+		schemas = append(schemas, t.Schema)
+	}
+
+	tools, err := Tools(schemas)
 	if err != nil {
 		return Request{}, err
 	}
