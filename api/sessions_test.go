@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/LeonardJouve/pointsman/provider"
+	"github.com/LeonardJouve/pointsman/session"
 )
 
 // serve returns a handler whose model answers every request with the given status and body.
@@ -36,29 +37,27 @@ func send(handler http.Handler, method, path, body string) *httptest.ResponseRec
 func start(t *testing.T, handler http.Handler) string {
 	t.Helper()
 
-	var agent, session struct{ ID string }
+	var agent, session idResponse
 	created := send(handler, "POST", "/agents", `{"model":"m"}`)
 	if err := json.Unmarshal(created.Body.Bytes(), &agent); err != nil {
 		t.Fatal(err)
 	}
 
-	created = send(handler, "POST", "/sessions", `{"agent":"`+agent.ID+`","prompt":"hello"}`)
+	request, _ := json.Marshal(sessionRequest{Agent: agent.ID.String(), Prompt: "hello"})
+	created = send(handler, "POST", "/sessions", string(request))
 	if err := json.Unmarshal(created.Body.Bytes(), &session); err != nil || created.Code != http.StatusCreated {
 		t.Fatalf("got %d %s", created.Code, created.Body)
 	}
 
-	return "/sessions/" + session.ID
+	return "/sessions/" + session.ID.String()
 }
 
 // finished polls the session until it is no longer running.
-func finished(t *testing.T, handler http.Handler, path string) (status string, messages []map[string]any) {
+func finished(t *testing.T, handler http.Handler, path string) (status session.Status, messages []provider.Message) {
 	t.Helper()
 
 	for range 200 {
-		var got struct {
-			Status   string
-			Messages []map[string]any
-		}
+		var got sessionResponse
 		if err := json.Unmarshal(send(handler, "GET", path, "").Body.Bytes(), &got); err != nil {
 			t.Fatal(err)
 		}
@@ -81,8 +80,8 @@ func TestSessionSucceeds(t *testing.T) {
 
 	status, messages := finished(t, handler, path)
 	if status != "succeeded" || len(messages) != 2 ||
-		messages[0]["role"] != "user" || messages[0]["content"] != "hello" ||
-		messages[1]["role"] != "assistant" || messages[1]["content"] != "done" {
+		messages[0].OfUser == nil || messages[0].OfUser.Content.OfString.Value != "hello" ||
+		messages[1].OfAssistant == nil || messages[1].OfAssistant.Content.OfString.Value != "done" {
 		t.Errorf("got %s %v", status, messages)
 	}
 }

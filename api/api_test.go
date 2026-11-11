@@ -25,7 +25,7 @@ func TestCreateAndListAgents(t *testing.T) {
 	created := httptest.NewRecorder()
 	handler.ServeHTTP(created, httptest.NewRequest("POST", "/agents", strings.NewReader(request)))
 
-	var id struct{ ID string }
+	var id idResponse
 	if err := json.Unmarshal(created.Body.Bytes(), &id); err != nil || created.Code != http.StatusCreated {
 		t.Fatalf("got %d %s", created.Code, created.Body)
 	}
@@ -33,7 +33,7 @@ func TestCreateAndListAgents(t *testing.T) {
 	got := httptest.NewRecorder()
 	handler.ServeHTTP(got, httptest.NewRequest("GET", "/agents", nil))
 
-	want := `{"` + id.ID + `":{"model":"m","prompt":"p","tools":["write"],"effort":"low","max_tokens":10}}`
+	want := `{"` + id.ID.String() + `":{"model":"m","prompt":"p","tools":["write"],"effort":"low","max_tokens":10}}`
 	if strings.TrimSpace(got.Body.String()) != want {
 		t.Errorf("got %s, want %s", got.Body, want)
 	}

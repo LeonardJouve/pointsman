@@ -32,7 +32,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	s.agents[id] = a
 	s.mutex.Unlock()
 
-	reply(w, http.StatusCreated, map[string]string{"id": id.String()})
+	reply(w, http.StatusCreated, idResponse{ID: id})
 }
 
 func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
