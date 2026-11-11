@@ -20,6 +20,20 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestStatus(t *testing.T) {
+	s := New(agent.Agent{})
+	if s.Status() != Running {
+		t.Errorf("new session is %v, want Running", s.Status())
+	}
+
+	for _, want := range []Status{Succeeded, Failed} {
+		s.SetStatus(want)
+		if got := s.Status(); got != want {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	}
+}
+
 func TestAppend(t *testing.T) {
 	var reply provider.Reply
 	if err := json.Unmarshal([]byte(toolCallReply), &reply); err != nil {

@@ -48,8 +48,10 @@ call `Call` directly, without a gRPC server.
 (stdlib `uuid.New()`; V7 if sorting by creation is ever needed) and no messages. `AppendUser`, `AppendReply` and
 `AppendToolResult` are the only way the loop writes the log; a log entry is a `provider.Message`. A mutex guards the
 log: the Append methods lock, and `Messages()` locks and returns a copy, so a reader (an HTTP handler) never shares
-the slice with the loop. The ID never reaches
-the model (D3): `Context` takes the agent and the messages only.
+the slice with the loop. The same mutex guards the run status: `Status` is `Running` (the zero value, what `New`
+returns), `Succeeded` or `Failed`; `Status()` and `SetStatus()` lock. The router's goroutine calls `SetStatus` once,
+when `loop.Run` returns; the loop does not touch it. A failed run leaves the log unchanged and the session keeps no
+error. The ID never reaches the model (D3): `Context` takes the agent and the messages only.
 
 **loop**: `loop.Run(ctx, s, client, dispatcher)` runs a session until the model answers without tool calls. The
 caller appends the user message first and reads the answer from the last message of the log.
@@ -149,8 +151,8 @@ server, `cmd/dispatcher`, `loop` and `api` agents, are built):
 6. **The router API**, in three changes (HTTP, `cmd/router`):
    1. Agents. Built (`api`, above).
    2. Sessions. `POST /sessions` with `{"agent": "<id>", "prompt": ...}` returns the id and runs `loop.Run` in a
-      goroutine; `GET /sessions/{id}` returns the status and the log. It needs a lock in `session`. `cmd/router`
-      (its `main`) comes with this change.
+      goroutine; `GET /sessions/{id}` returns the status and the log. The goroutine sets the status when `loop.Run` returns and logs its error (open
+      for `cmd/router`). `cmd/router` (its `main`) comes with this change.
    3. The SSE stream. `GET /sessions/{id}/events`; the event id is the log index, and `Last-Event-ID` resumes.
 
 Streaming is a change of its own (it changes how `Send` reads the response, D30).

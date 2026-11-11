@@ -9,12 +9,20 @@ import (
 	"github.com/LeonardJouve/pointsman/provider"
 )
 
-type Session struct {
-	ID    uuid.UUID
-	Agent agent.Agent
+type Status uint8
 
+const (
+	Running Status = iota
+	Succeeded
+	Failed
+)
+
+type Session struct {
 	mu       sync.Mutex
+	ID       uuid.UUID
+	Agent    agent.Agent
 	messages []provider.Message
+	status   Status
 }
 
 func New(a agent.Agent) *Session {
@@ -48,4 +56,18 @@ func (s *Session) Messages() []provider.Message {
 	defer s.mu.Unlock()
 
 	return slices.Clone(s.messages)
+}
+
+func (s *Session) Status() Status {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.status
+}
+
+func (s *Session) SetStatus(status Status) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.status = status
 }
