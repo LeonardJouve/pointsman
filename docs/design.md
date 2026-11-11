@@ -10,7 +10,8 @@ what is built, the facts it rests on, what is next and open.
 with the agent's model, tools and config. `Request` is an alias of the SDK params: marshal it to see the body as
 sent. `Send(ctx, request)` makes the call and returns the reply message. SDK retries are off: retries belong to the
 router (D16). `Message`, `Reply`, `Tool` and `Request` are aliases of the SDK types; `System`, `User` and
-`ToolResult` build messages.
+`ToolResult` build messages. `Send` returns `ErrTruncated` when `finish_reason` is `"length"` (D10): the partial
+reply is dropped.
 
 **agent**: config only, no runtime state (SPEC §3); the context (the log) belongs to the session, so many sessions
 share one agent. `agent.New(model, prompt, tools, config)` returns `Agent{Model, Prompt, Tools, Config}`, with
@@ -43,6 +44,18 @@ call `Call` directly, without a gRPC server.
 (stdlib `uuid.New()`; V7 if sorting by creation is ever needed) and no messages. `AppendUser`, `AppendReply` and
 `AppendToolResult` are the only way the loop writes the log; a log entry is a `provider.Message`. The ID never reaches
 the model (D3): `Context` takes the agent and the messages only.
+
+**loop**: `loop.Run(ctx, s, client, dispatcher)` runs a session until the model answers without tool calls. The
+caller appends the user message first and reads the answer from the last message of the log.
+- Each turn: `provider.Context`, `Send`, then the dispatcher is called for every tool call of the reply.
+- The calls of one reply run at the same time (`sync.WaitGroup`, results by position); every call runs to the end,
+  failures are joined. Two calls of one reply touching the same file have no defined order.
+- The log stays valid: the reply and all its results are appended together, after every call succeeded. On any
+  error (`Send`, `ErrTruncated`, a dispatcher call) `Run` returns it and the log is unchanged. No resume, no retry.
+- The request carries the session ID, the call's ID, the function name and the model's arguments as they are.
+- A dispatcher error is returned, never written to the model (D24). A `Result` with `code != 0` becomes the tool
+  message `output + "\nCommand exited with code N"`; code 0 leaves
+  the output as is.
 
 **tools `read` and `write`** (constructors `tool.Read()` and `tool.Write()`, returning the schema-generation error):
 copies of pi's, same names, parameters, descriptions and limits (2000 lines or 50KB, from the constants that enforce
@@ -108,15 +121,13 @@ protoc-gen-go and protoc-gen-go-grpc on PATH).
 Layout: one Go module. The two apps will be `cmd/router` and `cmd/dispatcher`, each added by the change that writes
 its `main`; the library packages stay where they are.
 
-Plan, bottom-up; one piece is one change, and each lists the decisions it needs (pieces 1-3, tools, the
-server and `cmd/dispatcher`, are built):
+Plan, bottom-up; one piece is one change, and each lists the decisions it needs (pieces 1-3 and 5, tools, the
+server, `cmd/dispatcher` and `loop`, are built):
 4. **A Docker tool** (deferred). A function that runs `docker run --rm` through `os/exec`, the session's workspace
    mounted, arguments on stdin, exit code as `code`. Needs: workspace storage (Open), the image, the network
    policy, how Docker's own failures (exit 125-127) are reported: a non-zero code with the message, or a way for
    `Run` to report them.
-5. **The session loop.** `Send`, append the reply, call the dispatcher for each tool call, append each result, stop
-   when the reply has no tool calls. Needs: where the loop lives and its signature; how a non-zero code is written
-   into the tool message; truncated replies (Open); what the loop does with an infrastructure error.
+5. **The session loop.** Built (`loop`, above).
 6. **`cmd/router`.** The `main` that wires provider, session and the dispatcher client. Needs: config loading (agent
    from YAML?), and what starts a session (D32's client interface, or a CLI first).
 
@@ -124,8 +135,8 @@ Streaming is a change of its own (it changes how `Send` reads the response, D30)
 
 ## Open
 
-- **Truncated replies.** `finish_reason == "length"` is a partial response (D10): `Send` should return an error
-  or the reason.
+- **Transient provider errors.** The loop does not retry a failed `Send` (D16); it returns the error with the log
+  unchanged, so the caller may call `Run` again.
 - **Workspace storage.** Who owns it (the dispatcher, from the `session_id`?) and when is it deleted (with the
   session?).
 - **`developer` or `system` role.** Some OpenAI-compatible servers reject `developer`; `provider` has only `System`.
