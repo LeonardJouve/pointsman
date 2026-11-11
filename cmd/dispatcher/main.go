@@ -1,21 +1,29 @@
 package main
 
 import (
-	"flag"
 	"log"
 	"net"
 
 	"google.golang.org/grpc"
 
 	"github.com/LeonardJouve/pointsman/dispatch"
+	"github.com/LeonardJouve/pointsman/env"
 	"github.com/LeonardJouve/pointsman/tool"
 )
 
 func main() {
-	addr := flag.String("addr", "localhost:50051", "listen address")
-	flag.Parse()
+	if env.IsDevelopment() {
+		if err := env.Load(".env"); err != nil {
+			log.Fatal(err)
+		}
+	}
 
-	listener, err := net.Listen("tcp", *addr)
+	addr, ok := env.Get("DISPATCHER_ADDR")
+	if !ok {
+		log.Fatal("DISPATCHER_ADDR is required")
+	}
+
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal(err)
 	}
