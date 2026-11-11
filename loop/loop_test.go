@@ -62,7 +62,7 @@ func start() *session.Session {
 // roles returns the role of each message in the log.
 func roles(s *session.Session) string {
 	var out []string
-	for _, m := range s.Messages {
+	for _, m := range s.Messages() {
 		switch {
 		case m.OfUser != nil:
 			out = append(out, "user")
@@ -77,7 +77,7 @@ func roles(s *session.Session) string {
 }
 
 func toolContent(s *session.Session, i int) string {
-	return s.Messages[i].OfTool.Content.OfString.Value
+	return s.Messages()[i].OfTool.Content.OfString.Value
 }
 
 func TestRunNoToolCalls(t *testing.T) {
@@ -110,9 +110,9 @@ func TestRunToolCalls(t *testing.T) {
 		t.Fatalf("roles = %s", got)
 	}
 
-	if s.Messages[2].OfTool.ToolCallID != "a" || toolContent(s, 2) != "out1" ||
-		s.Messages[3].OfTool.ToolCallID != "b" || toolContent(s, 3) != "out2" {
-		t.Errorf("results = %+v, %+v", s.Messages[2], s.Messages[3])
+	if s.Messages()[2].OfTool.ToolCallID != "a" || toolContent(s, 2) != "out1" ||
+		s.Messages()[3].OfTool.ToolCallID != "b" || toolContent(s, 3) != "out2" {
+		t.Errorf("results = %+v, %+v", s.Messages()[2], s.Messages()[3])
 	}
 }
 

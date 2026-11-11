@@ -1,6 +1,8 @@
 package session
 
 import (
+	"slices"
+	"sync"
 	"uuid"
 
 	"github.com/LeonardJouve/pointsman/agent"
@@ -8,9 +10,11 @@ import (
 )
 
 type Session struct {
-	ID       uuid.UUID
-	Agent    agent.Agent
-	Messages []provider.Message
+	ID    uuid.UUID
+	Agent agent.Agent
+
+	mu       sync.Mutex
+	messages []provider.Message
 }
 
 func New(a agent.Agent) *Session {
@@ -18,13 +22,30 @@ func New(a agent.Agent) *Session {
 }
 
 func (s *Session) AppendUser(text string) {
-	s.Messages = append(s.Messages, provider.User(text))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.messages = append(s.messages, provider.User(text))
 }
 
 func (s *Session) AppendReply(reply provider.Reply) {
-	s.Messages = append(s.Messages, reply.ToParam())
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.messages = append(s.messages, reply.ToParam())
 }
 
 func (s *Session) AppendToolResult(callID, output string) {
-	s.Messages = append(s.Messages, provider.ToolResult(callID, output))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.messages = append(s.messages, provider.ToolResult(callID, output))
+}
+
+// Messages returns a copy of the log, safe to read while the loop appends.
+func (s *Session) Messages() []provider.Message {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return slices.Clone(s.messages)
 }

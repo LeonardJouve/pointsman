@@ -6,21 +6,25 @@ what is built, the facts it rests on, what is next and open.
 ## Built
 
 **provider**: one OpenAI-compatible Chat Completions client (`openai-go/v3`).
-`Context(agent, messages)` is the pure build function of D9: it prepends the agent's prompt and returns a `Request`
-with the agent's model, tools and config. `Request` is an alias of the SDK params: marshal it to see the body as
-sent. `Send(ctx, request)` makes the call and returns the reply message. SDK retries are off: retries belong to the
-router (D16). `Message`, `Reply`, `Tool` and `Request` are aliases of the SDK types; `System`, `User` and
-`ToolResult` build messages. `Send` returns `ErrTruncated` when `finish_reason` is `"length"` (D10): the partial
-reply is dropped.
+`Context(agent, messages)` is the build function of D9: it prepends the agent's prompt and returns a `Request`
+with the agent's model, tools and config. It resolves the agent's tool names with `tool.Get` (an unknown name
+is an error), so it is not pure and builds the schemas on every call. `Request` is an alias of the SDK params:
+marshal it to see the body as sent. `Send(ctx, request)` makes the call and returns the reply message. SDK retries
+are off: retries belong to the router (D16). `Message`, `Reply`, `Tool` and `Request` are aliases of the SDK types;
+`System`, `User` and `ToolResult` build messages. `Send` returns a plain error when `finish_reason` is `"length"`
+(D10): the partial reply is dropped.
 
 **agent**: config only, no runtime state (SPEC §3); the context (the log) belongs to the session, so many sessions
-share one agent. `agent.New(model, prompt, tools, config)` returns `Agent{Model, Prompt, Tools, Config}`, with
-`Config{Effort, MaxTokens}`.
+share one agent. `Agent{Model, Prompt, Tools, Config}` is also the API's JSON (tags `model`, `prompt`, `tools`, and
+`Config` embedded so `effort` and `max_tokens` are flat). `Tools` are tool names, not schemas: `agent` does not
+import `tool`. `agent.New(model, prompt, tools, config)` builds one; `Config{Effort, MaxTokens}`.
 - `Effort` is the SDK's `shared.ReasoningEffort` and its constants (no own copy of the list; a second provider would
   give it its own type). `MaxTokens` is a `uint`. Both are optional in the API: the zero value is not sent.
-- `provider` imports `agent`, never the reverse.
+- `provider` imports `agent` and `tool`, never the reverse.
 
 **tool**: `Schema{Name, Description, Parameters}`, a tool's declaration as sent to the model.
+`tool.Get(name)` returns the built-in tool by its name (an unknown name is an error); `provider.Context` and the
+`api` check loop over the agent's names with it.
 - Data, not an interface with `Run`: the router never runs tool logic (SPEC §1). The tool instances live in the
   dispatcher.
 - `Parameters` is a `*jsonschema.Schema` (`google/jsonschema-go`); `tool.New(name, description, parameters)` builds
@@ -30,19 +34,21 @@ share one agent. `agent.New(model, prompt, tools, config)` returns `Agent{Model,
 - `Tool{Schema, Run}` pairs a schema with its function,
   `Run func(ctx, arguments string) (output string, code uint32)`: `arguments` is the model's JSON, parsed by the
   tool; a tool failure is a non-zero `code` with the message as `output`. A tool has no error path: errors are the
-  dispatcher's own (an unknown tool). The router imports a tool for its schema (`agent` and `provider`
-  unchanged), the dispatcher for its function. One module builds both apps from one commit, so the two cannot drift;
-  a `List` RPC would replace the import only if tools must be deployed without the router. The workspace parameter
-  comes with the Docker tool, and so does where tool instances live.
+  dispatcher's own (an unknown tool). The router imports a tool for its schema (`provider`
+  resolves names with it), the dispatcher for its function. One module builds both apps from one commit, so the two
+  cannot drift; a `List` RPC would replace the import only if tools must be deployed without the router. The
+  workspace parameter comes with the Docker tool, and so does where tool instances live.
 
 **dispatch**: the gRPC contract (below) and `NewServer(tools []tool.Tool)`, which implements `Dispatcher.Call`: it
 looks the tool up by `Schema.Name` (a name is written once), runs it and returns the `Result`. An unknown tool is a
-plain Go error: it reaches the router as gRPC `Unknown`; codes come with the loop if its policy needs them. Tests
+plain Go error: it reaches the router as gRPC `Unknown`. The loop writes a non-zero code into the tool message. Tests
 call `Call` directly, without a gRPC server.
 
-**session**: `Session{ID, Agent, Messages}`. `session.New(agent)` returns a `*Session` with a random ID
+**session**: `Session{ID, Agent}` and an unexported log. `session.New(agent)` returns a `*Session` with a random ID
 (stdlib `uuid.New()`; V7 if sorting by creation is ever needed) and no messages. `AppendUser`, `AppendReply` and
-`AppendToolResult` are the only way the loop writes the log; a log entry is a `provider.Message`. The ID never reaches
+`AppendToolResult` are the only way the loop writes the log; a log entry is a `provider.Message`. A mutex guards the
+log: the Append methods lock, and `Messages()` locks and returns a copy, so a reader (an HTTP handler) never shares
+the slice with the loop. The ID never reaches
 the model (D3): `Context` takes the agent and the messages only.
 
 **loop**: `loop.Run(ctx, s, client, dispatcher)` runs a session until the model answers without tool calls. The
@@ -51,13 +57,14 @@ caller appends the user message first and reads the answer from the last message
 - The calls of one reply run at the same time (`sync.WaitGroup`, results by position); every call runs to the end,
   failures are joined. Two calls of one reply touching the same file have no defined order.
 - The log stays valid: the reply and all its results are appended together, after every call succeeded. On any
-  error (`Send`, `ErrTruncated`, a dispatcher call) `Run` returns it and the log is unchanged. No resume, no retry.
+  error (`Send`, a truncated reply, a dispatcher call) `Run` returns it and the log is unchanged. No resume, no retry.
 - The request carries the session ID, the call's ID, the function name and the model's arguments as they are.
 - A dispatcher error is returned, never written to the model (D24). A `Result` with `code != 0` becomes the tool
   message `output + "\nCommand exited with code N"`; code 0 leaves
   the output as is.
 
-**tools `read` and `write`** (constructors `tool.Read()` and `tool.Write()`, returning the schema-generation error):
+**tools `read` and `write`** (constructors `tool.Read()` and `tool.Write()`, returning the schema-generation error;
+`tool.All()` returns every built-in tool, the one list, and the first constructor error):
 copies of pi's, same names, parameters, descriptions and limits (2000 lines or 50KB, from the constants that enforce
 them). They run directly in the dispatcher, no Docker.
 - The parameters schema is generated from the argument struct (`jsonschema.For`, descriptions in `jsonschema` tags,
@@ -72,7 +79,18 @@ them). They run directly in the dispatcher, no Docker.
   pi. Confinement and the root come with workspaces.
 
 **cmd/dispatcher**: listens on the `-addr` flag (default `localhost:50051`, below the OS's ephemeral port range) and
-serves `dispatch.NewServer` with the tools from `tool.Read()` and `tool.Write()`; an error from either is fatal.
+serves `dispatch.NewServer` with the tools from `tool.All()`; its error is fatal.
+
+**api**: the router's HTTP API, stdlib `net/http` (`ServeMux` patterns, `encoding/json`).
+`http.ListenAndServe(addr, api.New().Handler())`. A create request is decoded straight into `agent.Agent`; its tool
+names are checked with `tool.Get`, the same lookup `Context` uses. `Server` holds the agents in
+memory (`map[uuid.UUID]agent.Agent` behind a mutex): they vanish at restart; storage is a later piece, together with
+the open question about sessions.
+- `POST /agents` takes `model`, `prompt`, `tools` (names), and optional `effort` and `max_tokens`; it returns
+  `201` and `{"id": "<uuid>"}`, the id generated by the router.
+- `GET /agents` returns all the agents as a map of id to agent (`tools` are the stored names); `{}` when empty.
+  There is no `GET /agents/{id}` for now.
+- Errors are `{"error": "..."}`: bad JSON or an unknown tool name is a 400.
 
 ## Facts: the Chat Completions context
 
@@ -121,15 +139,19 @@ protoc-gen-go and protoc-gen-go-grpc on PATH).
 Layout: one Go module. The two apps will be `cmd/router` and `cmd/dispatcher`, each added by the change that writes
 its `main`; the library packages stay where they are.
 
-Plan, bottom-up; one piece is one change, and each lists the decisions it needs (pieces 1-3 and 5, tools, the
-server, `cmd/dispatcher` and `loop`, are built):
+Plan, bottom-up; one piece is one change, and each lists the decisions it needs (pieces 1-3, 5 and 6.1, tools, the
+server, `cmd/dispatcher`, `loop` and `api` agents, are built):
 4. **A Docker tool** (deferred). A function that runs `docker run --rm` through `os/exec`, the session's workspace
    mounted, arguments on stdin, exit code as `code`. Needs: workspace storage (Open), the image, the network
    policy, how Docker's own failures (exit 125-127) are reported: a non-zero code with the message, or a way for
    `Run` to report them.
 5. **The session loop.** Built (`loop`, above).
-6. **`cmd/router`.** The `main` that wires provider, session and the dispatcher client. Needs: config loading (agent
-   from YAML?), and what starts a session (D32's client interface, or a CLI first).
+6. **The router API**, in three changes (HTTP, `cmd/router`):
+   1. Agents. Built (`api`, above).
+   2. Sessions. `POST /sessions` with `{"agent": "<id>", "prompt": ...}` returns the id and runs `loop.Run` in a
+      goroutine; `GET /sessions/{id}` returns the status and the log. It needs a lock in `session`. `cmd/router`
+      (its `main`) comes with this change.
+   3. The SSE stream. `GET /sessions/{id}/events`; the event id is the log index, and `Last-Event-ID` resumes.
 
 Streaming is a change of its own (it changes how `Send` reads the response, D30).
 
@@ -137,6 +159,8 @@ Streaming is a change of its own (it changes how `Send` reads the response, D30)
 
 - **Transient provider errors.** The loop does not retry a failed `Send` (D16); it returns the error with the log
   unchanged, so the caller may call `Run` again.
+- **Memory and the model.** Sessions and agents are in memory only. How the router reaches the model (base URL and
+  key) is not decided.
 - **Workspace storage.** Who owns it (the dispatcher, from the `session_id`?) and when is it deleted (with the
   session?).
 - **`developer` or `system` role.** Some OpenAI-compatible servers reject `developer`; `provider` has only `System`.

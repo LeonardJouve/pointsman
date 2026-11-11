@@ -14,7 +14,7 @@ import (
 // Run sends the log to the model until a reply has no tool calls. On an error the log is left as it was.
 func Run(ctx context.Context, s *session.Session, client *provider.Client, dispatcher dispatch.DispatcherClient) error {
 	for {
-		request, err := provider.Context(s.Agent, s.Messages)
+		request, err := provider.Context(s.Agent, s.Messages())
 		if err != nil {
 			return err
 		}
