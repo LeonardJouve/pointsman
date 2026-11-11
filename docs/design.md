@@ -81,8 +81,14 @@ them). They run directly in the dispatcher, no Docker.
 - Paths: relative ones start at `root` (`"."`, in `tool/tool.go`); absolute paths and `..` are not rejected, as in
   pi. Confinement and the root come with workspaces.
 
-**cmd/dispatcher**: listens on the `-addr` flag (default `localhost:50051`, below the OS's ephemeral port range) and
-serves `dispatch.NewServer` with the tools from `tool.All()`; its error is fatal.
+**cmd/dispatcher**: listens on `DISPATCHER_ADDR` and serves `dispatch.NewServer` with the tools from `tool.All()`;
+its error is fatal.
+
+**cmd/router**: builds `provider.New(LLM_BASE_URL, LLM_API_KEY)`, dials the dispatcher at `DISPATCHER_ADDR` (insecure
+gRPC) and serves `api` on `ROUTER_ADDR`; its error is fatal. Both mains read their settings
+with `env.Get`. `.env` is loaded (`env.Load`) only when `env.IsDevelopment()`, and the process environment
+wins over the file; in production only the process environment is used. `.env` is git-ignored.
+All four variables are required; `.env.example` lists them.
 
 **api**: the router's HTTP API, stdlib `net/http` (`ServeMux` patterns, `encoding/json`).
 `http.ListenAndServe(addr, api.New(client, dispatcher).Handler())`, with the `*provider.Client` and the
@@ -147,11 +153,10 @@ servers) do not apply, and it is a large dependency with its own session state.
 The contract is in `dispatch/dispatch.proto`; regenerate with `go generate ./dispatch` (needs protoc,
 protoc-gen-go and protoc-gen-go-grpc on PATH).
 
-Layout: one Go module. The two apps will be `cmd/router` and `cmd/dispatcher`, each added by the change that writes
-its `main`; the library packages stay where they are.
+Layout: one Go module. The two apps are `cmd/router` and `cmd/dispatcher`; the library packages stay where they are.
 
 Plan, bottom-up; one piece is one change, and each lists the decisions it needs (pieces 1-3, 5 and 6.1-6.2, tools, the
-server, `cmd/dispatcher`, `loop` and `api` agents and sessions, are built):
+server, `cmd/dispatcher`, `cmd/router`, `loop` and `api` agents and sessions, are built):
 4. **A Docker tool** (deferred). A function that runs `docker run --rm` through `os/exec`, the session's workspace
    mounted, arguments on stdin, exit code as `code`. Needs: workspace storage (Open), the image, the network
    policy, how Docker's own failures (exit 125-127) are reported: a non-zero code with the message, or a way for
@@ -164,9 +169,6 @@ server, `cmd/dispatcher`, `loop` and `api` agents and sessions, are built):
       log index, `Last-Event-ID` resumes, a periodic comment line keeps the connection alive (D30). Each event is a
       log entry. Needs: how waiting readers are woken when an entry is appended (this sits in `session`, next to the
       lock), what ends the stream (the run's status), and the open point "A reply before its tool results".
-   Then `cmd/router` (its `main`), which nothing runs yet: ask it before the stream if the user wants a router
-   startable with `curl` first. Needs: the model's base URL and key, the dispatcher address, the listen address,
-   and the logging of the loop's error (`api` calls `log.Print` today).
    Session shutdown (cancel on stop) comes later: runs use `context.Background()`, so only the process ending
    stops them.
 
@@ -178,8 +180,7 @@ Streaming is a change of its own (it changes how `Send` reads the response, D30)
   unchanged, so the caller may call `Run` again.
 - **A reply before its tool results.** A reader can see the assistant reply before its tool results are appended,
   and the status and the log are two separate reads.
-- **Memory and the model.** Sessions and agents are in memory only. How the router reaches the model (base URL and
-  key) is not decided.
+- **Memory and the model.** Sessions and agents are in memory only.
 - **The session holds a copy of its agent.** Kept on purpose: the copy pins the config version (D12, D18). Revisit
   when agents become editable; a pointer is safe only if agents are immutable.
 - **No API test with a tool call.** `api` tests use a model that replies without tool calls, so the dispatcher is

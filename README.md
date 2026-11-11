@@ -11,7 +11,13 @@ Since tool execution is decoupled from the harness, the router only passes data 
 See [SPEC.md](SPEC.md) for what this project is and how it is designed.
 
 ## Run
-Run the dispatcher: `go run ./cmd/dispatcher [-addr host:port]`.
+Copy `.env.example` to `.env` update the values.
+
+`.env` is read unless `ENVIRONMENT=production`.
+
+Run the dispatcher: `go run ./cmd/dispatcher`.
+
+Run the router: `go run ./cmd/router`.
 
 ## Test
 Build: `go build ./...`. Test: `go test ./...`.
