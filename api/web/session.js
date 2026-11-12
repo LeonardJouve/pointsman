@@ -1,4 +1,5 @@
 import {request} from "./api.js";
+import {conversation} from "./conversation.js";
 
 const colors = {
   running: "bg-warning",
@@ -24,9 +25,9 @@ export async function session(element) {
   const list = document.createElement("div");
   list.className = "list-group";
 
-  const sessions = Object.values(body).sort((a, b) => new Date(b.created) - new Date(a.created));
+  const sessions = Object.entries(body).sort(([, a], [, b]) => new Date(b.created) - new Date(a.created));
 
-  for (const found of sessions) {
+  for (const [id, found] of sessions) {
     const item = document.createElement("details");
     item.className = "list-group-item";
 
@@ -43,7 +44,25 @@ export async function session(element) {
     title.className = "position-relative pe-4";
     title.append(status, `${found.agent.name} ${new Date(found.created).toLocaleString()}`);
 
-    item.append(title);
+    const chat = document.createElement("div");
+
+    let source;
+    item.addEventListener("toggle", () => {
+      if (!item.open) {
+        source.close();
+
+        return;
+      }
+
+      source = conversation(chat, id, (final) => {
+        status.className = status.className.replace(colors[found.status], colors[final]);
+        found.status = final;
+        status.title = final;
+        word.textContent = final;
+      });
+    });
+
+    item.append(title, chat);
     list.append(item);
   }
 

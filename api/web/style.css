@@ -1,0 +1,13 @@
+.tail-left::before,
+.tail-right::before {
+  content: "";
+  position: absolute;
+  top: 0.9rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  background: inherit;
+  transform: rotate(45deg);
+}
+
+.tail-left::before { left: -0.3rem; }
+.tail-right::before { right: -0.3rem; }
