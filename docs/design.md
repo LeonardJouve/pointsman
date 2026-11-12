@@ -130,8 +130,8 @@ its error is fatal.
 is the rounds so far. Each reply waits a random inference time, drawn from a generator seeded by (seed, FNV-1a hash of
 the prompt, turn), so a session gets the same work in any arrival order and in any process.
 
-**cmd/load**: the load generator (`go run ./cmd/load`; constants at the top of `main.go`, router address from
-`ROUTER_ADDR`). It creates one agent (model `fake`, tool `sleep`, empty prompt),
+**cmd/loadgenerator**: the load generator (`go run ./cmd/loadgenerator`; constants at the top of `main.go`,
+router address from `ROUTER_ADDR`). It creates one agent (model `fake`, tool `sleep`, empty prompt),
 then starts `sessions` sessions at once, one goroutine each, session i with prompt
 `"i"`. Latency is the time from before `POST /sessions` to the `status` frame of its event stream. It writes `output`
 (`session,latency_ms,status`, one row per session in order) and prints the counts and min, median, p99 and max latency.
