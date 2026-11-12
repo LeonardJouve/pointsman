@@ -45,6 +45,10 @@ air -c .air.router.toml
 
 Try the API with [playground.http](playground.http). It lists the models, creates an agent and a session, and streams the events.
 
+### Dashboard
+
+The router serves a dashboard on the `/` endpoint.
+
 ### Build
 
 ```bash
