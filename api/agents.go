@@ -26,19 +26,19 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	id := uuid.New()
+	a.ID = uuid.New()
 
-	if err := agent.Save(id, a); err != nil {
+	if err := agent.Save(&a); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 
 		return
 	}
 
 	s.mutex.Lock()
-	s.agents[id] = a
+	s.agents[a.ID] = &a
 	s.mutex.Unlock()
 
-	reply(w, http.StatusCreated, idResponse{ID: id})
+	reply(w, http.StatusCreated, idResponse{ID: a.ID})
 }
 
 func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {

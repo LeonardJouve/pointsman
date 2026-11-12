@@ -10,7 +10,7 @@ import (
 	"github.com/LeonardJouve/pointsman/store"
 )
 
-func Load() (map[uuid.UUID]Agent, error) {
+func Load() (map[uuid.UUID]*Agent, error) {
 	dir, err := store.Agents()
 	if err != nil {
 		return nil, err
@@ -21,7 +21,7 @@ func Load() (map[uuid.UUID]Agent, error) {
 		return nil, err
 	}
 
-	agents := map[uuid.UUID]Agent{}
+	agents := map[uuid.UUID]*Agent{}
 
 	for _, file := range files {
 		id, err := uuid.Parse(strings.TrimSuffix(filepath.Base(file), ".json"))
@@ -39,14 +39,14 @@ func Load() (map[uuid.UUID]Agent, error) {
 			return nil, err
 		}
 
-		agents[id] = a
+		agents[id] = &a
 	}
 
 	return agents, nil
 }
 
 // Save writes through a temp file and a rename, so a crash never leaves a half-written agent.
-func Save(id uuid.UUID, a Agent) error {
+func Save(a *Agent) error {
 	dir, err := store.Agents()
 	if err != nil {
 		return err
@@ -57,7 +57,7 @@ func Save(id uuid.UUID, a Agent) error {
 		return err
 	}
 
-	file := filepath.Join(dir, id.String()+".json")
+	file := filepath.Join(dir, a.ID.String()+".json")
 	temp := file + ".tmp"
 
 	if err := os.WriteFile(temp, content, 0o600); err != nil {

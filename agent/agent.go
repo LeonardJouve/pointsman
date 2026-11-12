@@ -1,12 +1,17 @@
 package agent
 
-import "github.com/openai/openai-go/v3/shared"
+import (
+	"uuid"
+
+	"github.com/openai/openai-go/v3/shared"
+)
 
 type Agent struct {
-	Name   string   `json:"name"`
-	Model  string   `json:"model"`
-	Prompt string   `json:"prompt"`
-	Tools  []string `json:"tools"`
+	ID     uuid.UUID `json:"id"`
+	Name   string    `json:"name"`
+	Model  string    `json:"model"`
+	Prompt string    `json:"prompt"`
+	Tools  []string  `json:"tools"`
 	Config
 }
 

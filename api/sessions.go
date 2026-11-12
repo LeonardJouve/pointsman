@@ -32,7 +32,7 @@ type sessionResponse struct {
 type sessionSummary struct {
 	Created time.Time      `json:"created"`
 	Status  session.Status `json:"status"`
-	Agent   agent.Agent    `json:"agent"`
+	Agent   *agent.Agent   `json:"agent"`
 }
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {

@@ -24,7 +24,7 @@ func Run(ctx context.Context, s *session.Session, client *provider.Client, dispa
 	}()
 
 	for {
-		request, err := provider.Context(s.Agent, s.Messages())
+		request, err := provider.Context(*s.Agent, s.Messages())
 		if err != nil {
 			return err
 		}

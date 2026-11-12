@@ -21,7 +21,7 @@ type Server struct {
 	mutex      sync.Mutex
 	client     *provider.Client
 	dispatcher dispatch.DispatcherClient
-	agents     map[uuid.UUID]agent.Agent
+	agents     map[uuid.UUID]*agent.Agent
 	sessions   map[uuid.UUID]*session.Session
 }
 
@@ -33,7 +33,7 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-func New(client *provider.Client, dispatcher dispatch.DispatcherClient, agents map[uuid.UUID]agent.Agent) *Server {
+func New(client *provider.Client, dispatcher dispatch.DispatcherClient, agents map[uuid.UUID]*agent.Agent) *Server {
 	return &Server{
 		client:     client,
 		dispatcher: dispatcher,

@@ -53,7 +53,7 @@ func serve(t *testing.T, replies ...string) *provider.Client {
 }
 
 func start() *session.Session {
-	s := session.New(agent.Agent{})
+	s := session.New(&agent.Agent{})
 	s.AppendUser("go")
 
 	return s

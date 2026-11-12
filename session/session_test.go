@@ -13,15 +13,15 @@ const toolCallReply = `{"role":"assistant","content":null,"tool_calls":[` +
 	`{"id":"c9","type":"function","function":{"name":"look","arguments":"{}"}}]}`
 
 func TestNew(t *testing.T) {
-	s := New(agent.Agent{})
+	s := New(&agent.Agent{})
 
-	if s.ID.Compare(New(agent.Agent{}).ID) == 0 || len(s.Messages()) != 0 {
+	if s.ID.Compare(New(&agent.Agent{}).ID) == 0 || len(s.Messages()) != 0 {
 		t.Errorf("got ID %v with %d messages", s.ID, len(s.Messages()))
 	}
 }
 
 func TestStatus(t *testing.T) {
-	s := New(agent.Agent{})
+	s := New(&agent.Agent{})
 	if s.Status() != Running {
 		t.Errorf("new session is %v, want Running", s.Status())
 	}
@@ -40,7 +40,7 @@ func TestAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := New(agent.Agent{})
+	s := New(&agent.Agent{})
 	s.AppendUser("fix the build")
 	s.AppendReply(reply)
 	s.AppendToolResult("c9", "done")
@@ -76,7 +76,7 @@ func TestAppend(t *testing.T) {
 }
 
 func TestMessagesWhileAppending(t *testing.T) {
-	s := New(agent.Agent{})
+	s := New(&agent.Agent{})
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
@@ -95,7 +95,7 @@ func TestMessagesWhileAppending(t *testing.T) {
 }
 
 func TestChanged(t *testing.T) {
-	s := New(agent.Agent{})
+	s := New(&agent.Agent{})
 	changed := s.Changed()
 
 	select {
@@ -113,7 +113,7 @@ func TestChanged(t *testing.T) {
 }
 
 func TestChangedWakesReader(t *testing.T) {
-	s := New(agent.Agent{})
+	s := New(&agent.Agent{})
 	changed := s.Changed()
 	woken := make(chan struct{})
 

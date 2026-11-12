@@ -15,10 +15,10 @@ func isolate(t *testing.T) {
 func TestSaveLoad(t *testing.T) {
 	isolate(t)
 
-	id := uuid.New()
 	a := New("n", "m", "p", []string{"write"}, Config{Effort: "low", MaxTokens: 10})
+	a.ID = uuid.New()
 
-	if err := Save(id, a); err != nil {
+	if err := Save(&a); err != nil {
 		t.Fatal(err)
 	}
 
@@ -27,7 +27,7 @@ func TestSaveLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if want := map[uuid.UUID]Agent{id: a}; !reflect.DeepEqual(got, want) {
+	if want := map[uuid.UUID]*Agent{a.ID: &a}; !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }

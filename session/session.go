@@ -22,13 +22,13 @@ type Session struct {
 	mu       sync.Mutex
 	ID       uuid.UUID
 	Created  time.Time
-	Agent    agent.Agent
+	Agent    *agent.Agent
 	messages []provider.Message
 	status   Status
 	changed  chan struct{}
 }
 
-func New(a agent.Agent) *Session {
+func New(a *agent.Agent) *Session {
 	return &Session{
 		ID:      uuid.New(),
 		Created: time.Now(),
