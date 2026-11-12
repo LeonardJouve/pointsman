@@ -7,9 +7,16 @@ It calls the model, records each session and delegates tool execution to externa
 Since tool execution is decoupled from the harness, the router only passes data between the sandboxes and the model. A single router can therefore handle many simultaneous sessions.
 
 ## History
-![pointsman](./img/pointsman.webp)
+<table>
+<tr>
+<td valign="top">
 
 A pointsman is the railway worker who operates the movable rails that send a train from one track to another. He stands at the junction and routes each train to the right track.
+
+</td>
+<td valign="top"><img src="./img/pointsman.webp" alt="pointsman" width="250"></td>
+</tr>
+</table>
 
 ## Spec
 See [SPEC.md](SPEC.md) for what this project is and how it is designed.
