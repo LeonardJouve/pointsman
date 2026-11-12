@@ -34,6 +34,8 @@ go run ./cmd/dispatcher
 go run ./cmd/router
 ```
 
+Or `./dev.sh` to run both with live reload (needs [air](https://github.com/air-verse/air)).
+
 ### Playground
 
 Try the API with [playground.http](playground.http). It lists the models, creates an agent and a session, and streams the events.

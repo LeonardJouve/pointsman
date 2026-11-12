@@ -55,3 +55,10 @@ func TestListNoAgents(t *testing.T) {
 		t.Errorf("got %s", got)
 	}
 }
+
+func TestDashboard(t *testing.T) {
+	got := do(t, "GET", "/", "")
+	if got.Code != http.StatusOK || !strings.Contains(got.Body.String(), "<html") {
+		t.Errorf("got %d %s", got.Code, got.Body)
+	}
+}

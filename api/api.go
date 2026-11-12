@@ -1,7 +1,9 @@
 package api
 
 import (
+	"embed"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"sync"
 	"uuid"
@@ -11,6 +13,9 @@ import (
 	"github.com/LeonardJouve/pointsman/provider"
 	"github.com/LeonardJouve/pointsman/session"
 )
+
+//go:embed web
+var web embed.FS
 
 type Server struct {
 	mutex      sync.Mutex
@@ -38,6 +43,7 @@ func New(client *provider.Client, dispatcher dispatch.DispatcherClient) *Server 
 }
 
 func (s *Server) Handler() http.Handler {
+	site, _ := fs.Sub(web, "web")
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /agents", s.createAgent)
 	mux.HandleFunc("GET /agents", s.listAgents)
@@ -45,6 +51,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /sessions/{id}", s.getSession)
 	mux.HandleFunc("GET /sessions/{id}/events", s.streamSession)
 	mux.HandleFunc("GET /models", s.listModels)
+	mux.Handle("GET /", http.FileServerFS(site))
 
 	return mux
 }

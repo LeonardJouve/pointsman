@@ -122,6 +122,10 @@ vanish at restart; storage is a later piece.
   status is not `running` it writes the remaining entries, then `status`, and closes. While running it waits for a
   change, the client leaving, or a 15 s tick that writes the comment `: keep-alive`. A client should close on
   `status`: `EventSource` reconnects when the server closes.
+- `GET /` serves the dashboard: static HTML and vanilla JS in `api/web/`, embedded with `go:embed` and served by
+  `http.FileServerFS`; the API routes are more specific and win. `index.html` has Bootstrap 5.3.9 from the jsDelivr
+  CDN and four tabs (Agent, Session, Model, Tool); `main.js` only wires, one ES module per tab. Only Model is built
+  (`model.js` lists `GET /models`, or shows the error); the other panes are empty.
 - Errors are `{"error": "..."}`: bad JSON, an unknown tool name, or (for a session) an agent id that
   is not a uuid or not known is a 400; an unknown or malformed session id is a 404.
 
@@ -191,6 +195,8 @@ Deferred):
 - Storage for agents and sessions (both in memory today).
 - Piece 4, the Docker tool, with workspaces.
 - Validating tool arguments against their schema in the router.
+- The dashboard tabs, in order: Model (built), then `GET /tools` and the Tool tab, then the Agent tab, then the
+  Session tab.
 
 ## Open
 

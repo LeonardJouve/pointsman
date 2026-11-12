@@ -2,3 +2,4 @@
 *.excalidraw
 *.exe
 session.jsonl
+tmp/
