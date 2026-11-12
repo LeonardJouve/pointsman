@@ -38,7 +38,7 @@ func start(t *testing.T, handler http.Handler) string {
 	t.Helper()
 
 	var agent, session idResponse
-	created := send(handler, "POST", "/agents", `{"model":"m"}`)
+	created := send(handler, "POST", "/agents", `{"name":"a","model":"m"}`)
 	if err := json.Unmarshal(created.Body.Bytes(), &agent); err != nil {
 		t.Fatal(err)
 	}

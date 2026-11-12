@@ -11,6 +11,7 @@ POST {{host}}/agents
 Content-Type: application/json
 
 {
+  "name": "assistant",
   "model": "{{models[0]}}",
   "prompt": "You are a helpful assistant.",
   "tools": ["read", "write"]

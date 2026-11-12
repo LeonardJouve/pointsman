@@ -62,7 +62,7 @@ func TestSendWithoutTools(t *testing.T) {
 
 func TestSendAgent(t *testing.T) {
 	client, got := serve(t, `{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`)
-	a := agent.New("m", "be brief", nil, agent.Config{Effort: shared.ReasoningEffortMedium, MaxTokens: 100})
+	a := agent.New("a", "m", "be brief", nil, agent.Config{Effort: shared.ReasoningEffortMedium, MaxTokens: 100})
 
 	request, err := Context(a, []Message{User("x")})
 	if err != nil {

@@ -3,6 +3,7 @@ package agent
 import "github.com/openai/openai-go/v3/shared"
 
 type Agent struct {
+	Name   string   `json:"name"`
 	Model  string   `json:"model"`
 	Prompt string   `json:"prompt"`
 	Tools  []string `json:"tools"`
@@ -14,6 +15,6 @@ type Config struct {
 	MaxTokens uint                   `json:"max_tokens,omitzero"`
 }
 
-func New(model, prompt string, tools []string, config Config) Agent {
-	return Agent{Model: model, Prompt: prompt, Tools: tools, Config: config}
+func New(name, model, prompt string, tools []string, config Config) Agent {
+	return Agent{Name: name, Model: model, Prompt: prompt, Tools: tools, Config: config}
 }
