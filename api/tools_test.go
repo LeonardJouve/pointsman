@@ -12,7 +12,7 @@ func TestListTools(t *testing.T) {
 		t.Fatalf("got %d %s", got.Code, got.Body)
 	}
 
-	for _, name := range []string{`"Name":"read"`, `"Name":"write"`} {
+	for _, name := range []string{`"Name":"read"`, `"Name":"write"`, `"Name":"sleep"`} {
 		if !strings.Contains(got.Body.String(), name) {
 			t.Errorf("missing %s in %s", name, got.Body)
 		}

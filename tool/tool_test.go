@@ -65,6 +65,29 @@ func TestWriteBadArguments(t *testing.T) {
 	}
 }
 
+func TestSleep(t *testing.T) {
+	sleepTool, err := Sleep()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output, code := sleepTool.Run(context.Background(), arguments(t, map[string]any{"ms": 1}))
+	if code != 0 || output != "Slept 1 ms" {
+		t.Errorf("got %q, %d", output, code)
+	}
+}
+
+func TestSleepBadArguments(t *testing.T) {
+	sleepTool, err := Sleep()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, code := sleepTool.Run(context.Background(), "{"); code != 1 {
+		t.Errorf("got code %d, want code 1", code)
+	}
+}
+
 func TestRead(t *testing.T) {
 	readTool, err := Read()
 	if err != nil {
@@ -153,6 +176,7 @@ func TestSchema(t *testing.T) {
 	}{
 		{"read", Read, []string{"limit", "offset", "path"}, []string{"path"}},
 		{"write", Write, []string{"content", "path"}, []string{"content", "path"}},
+		{"sleep", Sleep, []string{"ms"}, []string{"ms"}},
 	}
 
 	for _, test := range tests {

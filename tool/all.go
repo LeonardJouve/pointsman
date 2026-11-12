@@ -16,7 +16,12 @@ func All() ([]Tool, error) {
 		return nil, err
 	}
 
-	return []Tool{read, write}, nil
+	sleep, err := Sleep()
+	if err != nil {
+		return nil, err
+	}
+
+	return []Tool{read, write, sleep}, nil
 }
 
 // Get returns the built-in tool with the given name, and an error for an unknown name.

@@ -103,10 +103,12 @@ caller appends the user message first and reads the answer from the last message
   message `output + "\nCommand exited with code N"`; code 0 leaves
   the output as is.
 
-**tools `read` and `write`** (constructors `tool.Read()` and `tool.Write()`, returning the schema-generation error;
-`tool.All()` returns every built-in tool, the one list, and the first constructor error):
+**tools `read`, `write` and `sleep`** (constructors `tool.Read()`, `tool.Write()` and `tool.Sleep()`, returning the
+schema-generation error; `tool.All()` returns every built-in tool, the one list, and the first constructor error):
 copies of pi's, same names, parameters, descriptions and limits (2000 lines or 50KB, from the constants that enforce
 them). They run directly in the dispatcher, no Docker.
+- `sleep` is not from pi: parameter `ms`, waits with `time.Sleep` in the dispatcher and returns `Slept N ms`. The load
+  experiment uses it to hold a session in the dispatcher like a real tool call.
 - The parameters schema is generated from the argument struct (`jsonschema.For`, descriptions in `jsonschema` tags,
   optional fields `omitzero`), so the struct is the one source of truth. The generated schema differs from pi's:
   `offset` and `limit` are integers and `additionalProperties` is false. A `limit` of 0 or absent means no limit (pi
