@@ -1,1 +1,3 @@
 .env
+*.excalidraw
+session.jsonl
