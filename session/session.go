@@ -3,6 +3,7 @@ package session
 import (
 	"slices"
 	"sync"
+	"time"
 	"uuid"
 
 	"github.com/LeonardJouve/pointsman/agent"
@@ -20,6 +21,7 @@ const (
 type Session struct {
 	mu       sync.Mutex
 	ID       uuid.UUID
+	Created  time.Time
 	Agent    agent.Agent
 	messages []provider.Message
 	status   Status
@@ -29,6 +31,7 @@ type Session struct {
 func New(a agent.Agent) *Session {
 	return &Session{
 		ID:      uuid.New(),
+		Created: time.Now(),
 		Agent:   a,
 		status:  Running,
 		changed: make(chan struct{}),

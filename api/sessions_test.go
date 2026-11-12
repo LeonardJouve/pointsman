@@ -214,3 +214,24 @@ func TestWriteKeepAlive(t *testing.T) {
 		t.Errorf("got %q, want %q", out.String(), want)
 	}
 }
+
+func TestListSessions(t *testing.T) {
+	handler := serve(t, 200, `{"choices":[{"message":{"role":"assistant","content":"done"}}]}`)
+
+	if got := strings.TrimSpace(send(handler, "GET", "/sessions", "").Body.String()); got != "{}" {
+		t.Fatalf("got %s", got)
+	}
+
+	path := start(t, handler)
+	finished(t, handler, path)
+
+	var got map[string]sessionSummary
+	if err := json.Unmarshal(send(handler, "GET", "/sessions", "").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+
+	listed, ok := got[strings.TrimPrefix(path, "/sessions/")]
+	if !ok || listed.Created.IsZero() || listed.Status != session.Succeeded || listed.Agent.Name != "a" {
+		t.Errorf("got %+v", got)
+	}
+}

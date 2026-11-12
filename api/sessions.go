@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"maps"
 	"net/http"
 	"strconv"
 	"time"
 	"uuid"
 
+	"github.com/LeonardJouve/pointsman/agent"
 	"github.com/LeonardJouve/pointsman/loop"
 	"github.com/LeonardJouve/pointsman/provider"
 	"github.com/LeonardJouve/pointsman/session"
@@ -25,6 +27,12 @@ type sessionRequest struct {
 type sessionResponse struct {
 	Status   session.Status     `json:"status"`
 	Messages []provider.Message `json:"messages"`
+}
+
+type sessionSummary struct {
+	Created time.Time      `json:"created"`
+	Status  session.Status `json:"status"`
+	Agent   agent.Agent    `json:"agent"`
 }
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
@@ -66,6 +74,23 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	reply(w, http.StatusCreated, idResponse{ID: created.ID})
+}
+
+func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
+	s.mutex.Lock()
+	sessions := maps.Clone(s.sessions)
+	s.mutex.Unlock()
+
+	summaries := make(map[uuid.UUID]sessionSummary, len(sessions))
+	for id, found := range sessions {
+		summaries[id] = sessionSummary{
+			Created: found.Created,
+			Status:  found.Status(),
+			Agent:   found.Agent,
+		}
+	}
+
+	reply(w, http.StatusOK, summaries)
 }
 
 func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {

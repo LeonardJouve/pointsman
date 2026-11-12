@@ -48,13 +48,14 @@ looks the tool up by `Schema.Name` (a name is written once), runs it and returns
 plain Go error: it reaches the router as gRPC `Unknown`. The loop writes a non-zero code into the tool message. Tests
 call `Call` directly, without a gRPC server.
 
-**session**: `Session{ID, Agent}` and an unexported log. `session.New(agent)` returns a `*Session` with a random ID
-(stdlib `uuid.New()`; V7 if sorting by creation is ever needed) and no messages. `AppendUser`, `AppendReply` and
-`AppendToolResult` are the only way the loop writes the log; a log entry is a `provider.Message`. A mutex guards the
-log: the Append methods lock, and `Messages()` locks and returns a copy, so a reader (an HTTP handler) never shares
-the slice with the loop. The same mutex guards the run status: `Status` is a string type with three words, `running`,
-`succeeded` and `failed` (`Running`, `Succeeded`, `Failed`), so the JSON is the word; `New` sets `Running`;
-`Status()` and `SetStatus()` lock. Every Append and `SetStatus` closes a `changed` channel and makes a new one;
+**session**: `Session{ID, Agent, Created}` and an unexported log. `session.New(agent)` returns a `*Session` with a
+random ID (stdlib `uuid.New()`; V7 if sorting by creation is ever needed), `Created` set to `time.Now()`, and no
+messages. `AppendUser`, `AppendReply` and `AppendToolResult` are the only way the loop writes the log; a log entry is a
+`provider.Message`. A mutex guards the log: the Append methods lock, and `Messages()` locks and returns a copy, so a
+reader (an HTTP handler) never shares the slice with the loop. The same mutex guards the run status: `Status` is a
+string type with three words, `running`, `succeeded` and `failed` (`Running`, `Succeeded`, `Failed`), so the JSON is
+the word; `New` sets `Running`; `Status()` and `SetStatus()` lock. Every Append and `SetStatus` closes a `changed`
+channel and makes a new one;
 `Changed()` returns the current one. The stream calls `Changed()`, then `Status()`, then `Messages()`: a later change
 closes the channel, so no wake-up is missed, and the status is read before the log because `loop.Run` sets it last (no
 `sync.Cond`, no polling). `loop.Run` calls `SetStatus` once,
@@ -116,6 +117,8 @@ vanish at restart; storage is a later piece.
   appends the prompt, starts `loop.Run(context.Background(), ...)` in a goroutine and returns `201` and
   `{"id": "<uuid>"}` at once. `Run` sets the status (`succeeded` or `failed`); the goroutine
   only logs its error with `log.Print`. Nothing cancels a run: a stopped router kills its runs and loses its sessions.
+- `GET /sessions` returns a map of session id to `{"created": <RFC3339>, "status": "...", "agent": {...}}` (the
+  agent copy the session holds), `{}` when empty; no messages and no order: the page sorts by `created`.
 - `GET /sessions/{id}` returns `200` and `{"status": "...", "messages": [...]}`, the log as `provider.Message`
   (OpenAI wire format).
 - `GET /sessions/{id}/events` is a server-sent event stream (D30), plain `net/http` with `Flush`. Frames use the
