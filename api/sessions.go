@@ -77,13 +77,33 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	s.sessions[created.ID] = created
 	s.mutex.Unlock()
 
+	s.run(created)
+
+	reply(w, http.StatusCreated, idResponse{ID: created.ID})
+}
+
+// Resume every session that has not ended
+func (s *Server) Resume() {
+	s.mutex.Lock()
+	sessions := maps.Clone(s.sessions)
+	s.mutex.Unlock()
+
+	for _, found := range sessions {
+		if found.Status() != session.Running {
+			continue
+		}
+
+		s.run(found)
+	}
+}
+
+// run starts the session's loop in the background.
+func (s *Server) run(started *session.Session) {
 	go func() {
-		if err := loop.Run(context.Background(), created, s.client, s.dispatcher); err != nil {
+		if err := loop.Run(context.Background(), started, s.client, s.dispatcher); err != nil {
 			log.Print(err)
 		}
 	}()
-
-	reply(w, http.StatusCreated, idResponse{ID: created.ID})
 }
 
 func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {

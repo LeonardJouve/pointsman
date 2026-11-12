@@ -87,8 +87,8 @@ fails (the stream would wait on `Running` forever), then returns the write error
 header gives `Created` and the agent (looked up in `agents`), then the `message` lines in order, and a `status` line
 sets the status. A file that cannot be loaded (first line not a header, a line that does not parse, an unknown kind,
 an agent not in the map) is an error naming the file, and `cmd/router` exits. Other damage (a torn last line, a
-duplicate header, an unknown status word) is not handled. A file with no status line loads as `Running` and nothing
-runs it: resuming is next, so a loaded unfinished session stays `Running` until then.
+duplicate header, an unknown status word) is not handled. A file with no status line loads as `Running`: it has not
+ended, and `api.Server.Resume` runs it again (see `api`).
 
 **loop**: `loop.Run(ctx, s, client, dispatcher)` runs a session until the model answers without tool calls. The
 caller appends the user message first and reads the answer from the last message of the log.
@@ -96,7 +96,8 @@ caller appends the user message first and reads the answer from the last message
 - The calls of one reply run at the same time (`sync.WaitGroup`, results by position); every call runs to the end,
   failures are joined. Two calls of one reply touching the same file have no defined order.
 - The log stays valid: the reply and all its results are appended together, after every call succeeded. On any
-  error (`Send`, a truncated reply, a dispatcher call) `Run` returns it and the log is unchanged. No resume, no retry.
+  error (`Send`, a truncated reply, a dispatcher call) `Run` returns it and the log is unchanged. No retry.
+- `Run` works on a loaded log as on a new one, so a resumed session repeats the step that was cut off.
 - The request carries the session ID, the call's ID, the function name and the model's arguments as they are.
 - A dispatcher error is returned, never written to the model (D24). A `Result` with `code != 0` becomes the tool
   message `output + "\nCommand exited with code N"`; code 0 leaves
@@ -122,15 +123,21 @@ its error is fatal.
 
 **cmd/router**: loads the agents and sessions (`agent.Load`, `session.Load`), builds
 `provider.New(LLM_BASE_URL, LLM_API_KEY)`, dials the dispatcher at `DISPATCHER_ADDR` (insecure
-gRPC) and serves `api` on `ROUTER_ADDR`; its error is fatal. Both mains read their settings
-with `env.Get`. `.env` is loaded (`env.Load`) only when `env.IsDevelopment()`, and the process environment
+gRPC), calls `Resume` on the `api` server and serves it on `ROUTER_ADDR`; its error is fatal. Both mains read their
+settings with `env.Get`. `.env` is loaded (`env.Load`) only when `env.IsDevelopment()`, and the process environment
 wins over the file; in production only the process environment is used. `.env` is git-ignored.
 All four variables are required; `.env.example` lists them.
 
 **api**: the router's HTTP API, stdlib `net/http` (`ServeMux` patterns, `encoding/json`).
-`http.ListenAndServe(addr, api.New(client, dispatcher, agents, sessions).Handler())`, with the `*provider.Client`, the
+`server := api.New(client, dispatcher, agents, sessions)`, `server.Resume()`, then
+`http.ListenAndServe(addr, server.Handler())`, with the `*provider.Client`, the
 `dispatch.DispatcherClient` the runs use, and the agents and sessions `agent.Load()` and `session.Load` read at
-startup (`main` exits on a load error).
+startup (`main` exits on a load error). `New` is a plain constructor.
+`Resume` starts a background run for every session in the map whose status is `Running`: a session with no status
+line did not end, and `loop.Run` runs it again from its log. The repeated step is safe because nothing incomplete is
+written: a round is in the file whole or not at all, so the log ends on a complete message and the step is simply
+done again. `createSession` and `Resume` start their runs through one method, `run`, which calls
+`loop.Run(context.Background(), ...)` in a goroutine and logs its error with `log.Print`.
 A create request is decoded straight into `agent.Agent`; its tool names are checked with `tool.Get`, the same lookup
 `Context` uses, the router sets its `ID`, then `agent.Save` writes it before the map entry is set (a save error
 is a `500` and nothing is kept).
@@ -147,11 +154,11 @@ loaded by `session.Load` at startup and each new one also written to its file) b
   field names as keys (`Name`, `Description`, `Parameters`); `Run` is not sent. An error is a `500` with
   `{"error": "..."}`.
 - `POST /sessions` takes `{"agent": "<agent id>", "prompt": "..."}` (an empty prompt is accepted), creates the session,
-  appends the prompt, starts `loop.Run(context.Background(), ...)` in a goroutine and returns `201` and
+  appends the prompt, starts the run (`run`) and returns `201` and
   `{"id": "<uuid>"}` at once. A failed file write (`session.New` or the prompt) is a `500`: the session is not kept and
   no run starts. `Run` sets the status (`succeeded` or `failed`); the goroutine
-  only logs its error with `log.Print`. Nothing cancels a run: a stopped router kills its runs, and their sessions
-  load as `Running` with nothing resuming them.
+  only logs its error with `log.Print`. Nothing cancels a run: a stopped router kills its runs, and at the next start
+  `Resume` runs their sessions again.
 - `GET /sessions` returns a map of session id to `{"created": <RFC3339>, "status": "...", "agent": {...}}` (the
   agent the session holds, with its `id`), `{}` when empty; no messages and no order: the page sorts by `created`.
 - `GET /sessions/{id}` returns `200` and `{"status": "...", "messages": [...]}`, the log as `provider.Message`
@@ -253,8 +260,8 @@ Deferred):
 - Streaming from the model: changes how `Send` reads the response (D30).
 - Session shutdown: cancel a run on stop. Runs use `context.Background()`, so only the process ending stops them.
 - Retry of a failed `Send` in the router (D16).
-- Storage for sessions: writing and loading are built; resuming unfinished runs is next (who starts them, `cmd/router`
-  or `api`, is not decided), and so is the empty log (a header with no messages).
+- Storage for sessions: writing, loading and resuming are built; the empty log (a header with no messages, which
+  resumes with no messages) is open.
 - Piece 4, the Docker tool, with workspaces.
 - Validating tool arguments against their schema in the router.
 - The dashboard tabs, in order: Models, Tools, Agents (list and form) and Sessions (list, form and streamed

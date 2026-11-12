@@ -60,7 +60,8 @@ func main() {
 	client := provider.New(baseURL, apiKey)
 	dispatcher := dispatch.NewDispatcherClient(conn)
 
-	handler := api.New(client, dispatcher, agents, sessions).Handler()
+	server := api.New(client, dispatcher, agents, sessions)
+	server.Resume()
 
-	log.Fatal(http.ListenAndServe(routerAddr, handler))
+	log.Fatal(http.ListenAndServe(routerAddr, server.Handler()))
 }
