@@ -20,6 +20,7 @@ Tools are decoupled from the harness. They live in the dispatcher, a separate pr
 - Keep the router the single owner of session state.
 - Treat the model and the dispatcher as workers the router calls on behalf of a session.
 - Survive router crashes without corrupting sessions.
+  Set aside for now: the store is a temporary folder per start (load experiment).
 - Grow step by step, without a big up-front design.
 
 **Non-goals (for now)**

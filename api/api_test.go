@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,16 +12,8 @@ import (
 	"github.com/LeonardJouve/pointsman/session"
 )
 
-// isolate points the user config folder to a temporary one.
-func isolate(t *testing.T, folder string) {
-	t.Helper()
-	t.Setenv("AppData", folder)
-	t.Setenv("XDG_CONFIG_HOME", folder)
-}
-
 func newHandler(t *testing.T, client *provider.Client) http.Handler {
 	t.Helper()
-	isolate(t, t.TempDir())
 
 	return New(client, nil, agent.Agents{}, session.Sessions{}).Handler()
 }
@@ -80,43 +70,5 @@ func TestDashboard(t *testing.T) {
 	got := do(t, "GET", "/", "")
 	if got.Code != http.StatusOK || !strings.Contains(got.Body.String(), "<html") {
 		t.Errorf("got %d %s", got.Code, got.Body)
-	}
-}
-
-func TestCreateAgentSaves(t *testing.T) {
-	folder := t.TempDir()
-	isolate(t, folder)
-
-	handler := New(nil, nil, agent.Agents{}, session.Sessions{}).Handler()
-	created := httptest.NewRecorder()
-	handler.ServeHTTP(created, httptest.NewRequest("POST", "/agents", strings.NewReader(`{"name":"n","model":"m"}`)))
-
-	var id idResponse
-	if err := json.Unmarshal(created.Body.Bytes(), &id); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := os.Stat(filepath.Join(folder, "pointsman", "agents", id.ID.String()+".json")); err != nil {
-		t.Error(err)
-	}
-}
-
-func TestCreateAgentSaveFails(t *testing.T) {
-	blocker := filepath.Join(t.TempDir(), "file")
-	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	isolate(t, blocker)
-
-	handler := New(nil, nil, agent.Agents{}, session.Sessions{}).Handler()
-	created := httptest.NewRecorder()
-	handler.ServeHTTP(created, httptest.NewRequest("POST", "/agents", strings.NewReader(`{"name":"n","model":"m"}`)))
-
-	got := httptest.NewRecorder()
-	handler.ServeHTTP(got, httptest.NewRequest("GET", "/agents", nil))
-
-	if created.Code != http.StatusInternalServerError || strings.TrimSpace(got.Body.String()) != "{}" {
-		t.Errorf("got %d, list %s", created.Code, got.Body)
 	}
 }

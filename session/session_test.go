@@ -2,11 +2,15 @@ package session
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/LeonardJouve/pointsman/agent"
 	"github.com/LeonardJouve/pointsman/provider"
+	"github.com/LeonardJouve/pointsman/store"
 )
 
 const toolCallReply = `{"role":"assistant","content":null,"tool_calls":[` +
@@ -16,15 +20,24 @@ const twoCallsReply = `{"role":"assistant","content":null,"tool_calls":[` +
 	`{"id":"a","type":"function","function":{"name":"look","arguments":"{}"}},` +
 	`{"id":"b","type":"function","function":{"name":"look","arguments":"{}"}}]}`
 
-func isolate(t *testing.T) {
+func lines(t *testing.T, s *Session) []string {
 	t.Helper()
-	t.Setenv("AppData", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	dir, err := store.Sessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(dir, s.ID.String()+".jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return strings.Split(strings.TrimSuffix(string(content), "\n"), "\n")
 }
 
 func start(t *testing.T) *Session {
 	t.Helper()
-	isolate(t)
 
 	s, err := New(&agent.Agent{})
 	if err != nil {

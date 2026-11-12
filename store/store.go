@@ -3,18 +3,13 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"sync"
 )
 
-func Dir() (string, error) {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
-	}
-
-	dir := filepath.Join(base, "pointsman")
-
-	return dir, os.MkdirAll(dir, 0o700)
-}
+// Dir is a new temporary folder per process.
+var Dir = sync.OnceValues(func() (string, error) {
+	return os.MkdirTemp("", "pointsman-")
+})
 
 func Agents() (string, error) {
 	dir, err := Dir()

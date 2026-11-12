@@ -54,8 +54,6 @@ func serve(t *testing.T, replies ...string) *provider.Client {
 
 func start(t *testing.T) *session.Session {
 	t.Helper()
-	t.Setenv("AppData", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	s, err := session.New(&agent.Agent{})
 	if err != nil {

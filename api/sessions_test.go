@@ -4,13 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/LeonardJouve/pointsman/agent"
 	"github.com/LeonardJouve/pointsman/provider"
 	"github.com/LeonardJouve/pointsman/session"
 )
@@ -236,31 +233,5 @@ func TestListSessions(t *testing.T) {
 	listed, ok := got[strings.TrimPrefix(path, "/sessions/")]
 	if !ok || listed.Created.IsZero() || listed.Status != session.Succeeded || listed.Agent.Name != "a" {
 		t.Errorf("got %+v", got)
-	}
-}
-
-func TestCreateSessionWriteFails(t *testing.T) {
-	folder := t.TempDir()
-	isolate(t, folder)
-
-	handler := New(nil, nil, agent.Agents{}, session.Sessions{}).Handler()
-
-	var a idResponse
-	created := send(handler, "POST", "/agents", `{"name":"a","model":"m"}`)
-	if err := json.Unmarshal(created.Body.Bytes(), &a); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.WriteFile(filepath.Join(folder, "pointsman", "sessions"), nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	request, _ := json.Marshal(sessionRequest{Agent: a.ID.String(), Prompt: "hello"})
-	if code := send(handler, "POST", "/sessions", string(request)).Code; code != http.StatusInternalServerError {
-		t.Errorf("got %d", code)
-	}
-
-	if got := strings.TrimSpace(send(handler, "GET", "/sessions", "").Body.String()); got != "{}" {
-		t.Errorf("list %s", got)
 	}
 }

@@ -30,8 +30,9 @@ uuid is the key, two agents may share a name and an empty one is accepted. `Tool
   every `*.json` there into a map of id (the file name) to `*Agent`. Neither takes a folder.
 
 **store**: only decides where things live, never reads or writes their files. `store.Dir()` is
-`<os.UserConfigDir()>/pointsman` (mode 0700), `store.Agents()` and `store.Sessions()` are its `agents` and `sessions`
-folders; all create the folder.
+a new temporary folder per process (`os.MkdirTemp`, prefix `pointsman-`), made once (`sync.OnceValues`): a
+restart starts empty and resumes nothing (loading and `Resume` stay, idle). `store.Agents()` and `store.Sessions()` are
+its `agents` and `sessions` folders; both create theirs.
 
 **tool**: `Schema{Name, Description, Parameters}`, a tool's declaration as sent to the model.
 `tool.Get(name)` returns the built-in tool by its name (an unknown name is an error); `provider.Context` and the
@@ -129,6 +130,14 @@ its error is fatal.
 is the rounds so far. Each reply waits a random inference time, drawn from a generator seeded by (seed, FNV-1a hash of
 the prompt, turn), so a session gets the same work in any arrival order and in any process.
 
+**cmd/load**: the load generator (`go run ./cmd/load`; constants at the top of `main.go`, router address from
+`ROUTER_ADDR`). It creates one agent (model `fake`, tool `sleep`, empty prompt),
+then starts `sessions` sessions at once, one goroutine each, session i with prompt
+`"i"`. Latency is the time from before `POST /sessions` to the `status` frame of its event stream. It writes `output`
+(`session,latency_ms,status`, one row per session in order) and prints the counts and min, median, p99 and max latency.
+Status is `succeeded` or `failed` as the router reports it, or `error` when a request failed or the stream ended
+without a status frame; the run goes on.
+
 **cmd/router**: loads the agents and sessions (`agent.Load`, `session.Load`), builds
 `provider.New(LLM_BASE_URL, LLM_API_KEY)`, dials the dispatcher at `DISPATCHER_ADDR` (insecure
 gRPC), calls `Resume` on the `api` server and serves it on `ROUTER_ADDR`; its error is fatal. Both mains read their
@@ -165,8 +174,8 @@ loaded by `session.Load` at startup and each new one also written to its file) b
   appends the prompt, starts the run (`run`) and returns `201` and
   `{"id": "<uuid>"}` at once. A failed file write (`session.New` or the prompt) is a `500`: the session is not kept and
   no run starts. `Run` sets the status (`succeeded` or `failed`); the goroutine
-  only logs its error with `log.Print`. Nothing cancels a run: a stopped router kills its runs, and at the next start
-  `Resume` runs their sessions again.
+  only logs its error with `log.Print`. Nothing cancels a run: a stopped router kills its runs
+  (the folder is new at each start, so `Resume` finds nothing).
 - `GET /sessions` returns a map of session id to `{"created": <RFC3339>, "status": "...", "agent": {...}}` (the
   agent the session holds, with its `id`), `{}` when empty; no messages and no order: the page sorts by `created`.
 - `GET /sessions/{id}` returns `200` and `{"status": "...", "messages": [...]}`, the log as `provider.Message`
