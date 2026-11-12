@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"uuid"
 
 	"github.com/LeonardJouve/pointsman/agent"
 	"github.com/LeonardJouve/pointsman/provider"
@@ -244,7 +243,7 @@ func TestCreateSessionWriteFails(t *testing.T) {
 	folder := t.TempDir()
 	isolate(t, folder)
 
-	handler := New(nil, nil, map[uuid.UUID]*agent.Agent{}).Handler()
+	handler := New(nil, nil, agent.Agents{}, session.Sessions{}).Handler()
 
 	var a idResponse
 	created := send(handler, "POST", "/agents", `{"name":"a","model":"m"}`)

@@ -12,6 +12,7 @@ import (
 	"github.com/LeonardJouve/pointsman/dispatch"
 	"github.com/LeonardJouve/pointsman/env"
 	"github.com/LeonardJouve/pointsman/provider"
+	"github.com/LeonardJouve/pointsman/session"
 )
 
 func main() {
@@ -51,10 +52,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	sessions, err := session.Load(agents)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	client := provider.New(baseURL, apiKey)
 	dispatcher := dispatch.NewDispatcherClient(conn)
 
-	handler := api.New(client, dispatcher, agents).Handler()
+	handler := api.New(client, dispatcher, agents, sessions).Handler()
 
 	log.Fatal(http.ListenAndServe(routerAddr, handler))
 }

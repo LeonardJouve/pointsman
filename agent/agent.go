@@ -15,6 +15,8 @@ type Agent struct {
 	Config
 }
 
+type Agents map[uuid.UUID]*Agent
+
 type Config struct {
 	Effort    shared.ReasoningEffort `json:"effort,omitzero"`
 	MaxTokens uint                   `json:"max_tokens,omitzero"`

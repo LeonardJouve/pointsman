@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"uuid"
 
 	"github.com/LeonardJouve/pointsman/agent"
 	"github.com/LeonardJouve/pointsman/provider"
+	"github.com/LeonardJouve/pointsman/session"
 )
 
 // isolate points the user config folder to a temporary one.
@@ -25,7 +25,7 @@ func newHandler(t *testing.T, client *provider.Client) http.Handler {
 	t.Helper()
 	isolate(t, t.TempDir())
 
-	return New(client, nil, map[uuid.UUID]*agent.Agent{}).Handler()
+	return New(client, nil, agent.Agents{}, session.Sessions{}).Handler()
 }
 
 func do(t *testing.T, method, path, body string) *httptest.ResponseRecorder {
@@ -87,7 +87,7 @@ func TestCreateAgentSaves(t *testing.T) {
 	folder := t.TempDir()
 	isolate(t, folder)
 
-	handler := New(nil, nil, map[uuid.UUID]*agent.Agent{}).Handler()
+	handler := New(nil, nil, agent.Agents{}, session.Sessions{}).Handler()
 	created := httptest.NewRecorder()
 	handler.ServeHTTP(created, httptest.NewRequest("POST", "/agents", strings.NewReader(`{"name":"n","model":"m"}`)))
 
@@ -109,7 +109,7 @@ func TestCreateAgentSaveFails(t *testing.T) {
 
 	isolate(t, blocker)
 
-	handler := New(nil, nil, map[uuid.UUID]*agent.Agent{}).Handler()
+	handler := New(nil, nil, agent.Agents{}, session.Sessions{}).Handler()
 	created := httptest.NewRecorder()
 	handler.ServeHTTP(created, httptest.NewRequest("POST", "/agents", strings.NewReader(`{"name":"n","model":"m"}`)))
 

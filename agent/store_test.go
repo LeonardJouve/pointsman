@@ -27,7 +27,7 @@ func TestSaveLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if want := map[uuid.UUID]*Agent{a.ID: &a}; !reflect.DeepEqual(got, want) {
+	if want := (Agents{a.ID: &a}); !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/LeonardJouve/pointsman/store"
 )
 
-func Load() (map[uuid.UUID]*Agent, error) {
+func Load() (Agents, error) {
 	dir, err := store.Agents()
 	if err != nil {
 		return nil, err
@@ -21,7 +21,7 @@ func Load() (map[uuid.UUID]*Agent, error) {
 		return nil, err
 	}
 
-	agents := map[uuid.UUID]*Agent{}
+	agents := Agents{}
 
 	for _, file := range files {
 		id, err := uuid.Parse(strings.TrimSuffix(filepath.Base(file), ".json"))

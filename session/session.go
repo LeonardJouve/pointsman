@@ -28,6 +28,8 @@ type Session struct {
 	changed  chan struct{}
 }
 
+type Sessions map[uuid.UUID]*Session
+
 func New(a *agent.Agent) (*Session, error) {
 	s := &Session{
 		ID:      uuid.New(),
