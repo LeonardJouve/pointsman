@@ -12,6 +12,10 @@ import (
 const toolCallReply = `{"role":"assistant","content":null,"tool_calls":[` +
 	`{"id":"c9","type":"function","function":{"name":"look","arguments":"{}"}}]}`
 
+const twoCallsReply = `{"role":"assistant","content":null,"tool_calls":[` +
+	`{"id":"a","type":"function","function":{"name":"look","arguments":"{}"}},` +
+	`{"id":"b","type":"function","function":{"name":"look","arguments":"{}"}}]}`
+
 func isolate(t *testing.T) {
 	t.Helper()
 	t.Setenv("AppData", t.TempDir())
@@ -67,7 +71,7 @@ func TestAppend(t *testing.T) {
 	}
 
 	s := start(t)
-	for _, err := range []error{s.AppendUser("fix the build"), s.AppendReply(reply), s.AppendToolResult("c9", "done")} {
+	for _, err := range []error{s.AppendUser("fix the build"), s.AppendRound(reply, []string{"done"})} {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -160,4 +164,68 @@ func TestChangedWakesReader(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-woken
+}
+
+func TestAppendRoundTwoCalls(t *testing.T) {
+	var reply provider.Reply
+	if err := json.Unmarshal([]byte(twoCallsReply), &reply); err != nil {
+		t.Fatal(err)
+	}
+
+	s := start(t)
+	changed := s.Changed()
+
+	if err := s.AppendRound(reply, []string{"one", "two"}); err != nil {
+		t.Fatal(err)
+	}
+
+	<-changed
+
+	if s.Changed() == changed {
+		t.Error("Changed returned the closed channel")
+	}
+
+	want := []string{
+		`{"message":{"tool_calls":[` +
+			`{"id":"a","function":{"arguments":"{}","name":"look"},"type":"function"},` +
+			`{"id":"b","function":{"arguments":"{}","name":"look"},"type":"function"}],"role":"assistant"}}`,
+		`{"message":{"content":"one","tool_call_id":"a","role":"tool"}}`,
+		`{"message":{"content":"two","tool_call_id":"b","role":"tool"}}`,
+	}
+
+	got := lines(t, s)[1:]
+	if len(got) != len(want) || len(s.Messages()) != len(want) {
+		t.Fatalf("file %q, %d messages in memory", got, len(s.Messages()))
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d: got %s, want %s", i, got[i], want[i])
+		}
+
+		memory, err := json.Marshal(map[string]any{"message": s.Messages()[i]})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(memory) != want[i] {
+			t.Errorf("message %d in memory: got %s, want %s", i, memory, want[i])
+		}
+	}
+}
+
+func TestAppendRoundNoToolCalls(t *testing.T) {
+	var reply provider.Reply
+	if err := json.Unmarshal([]byte(`{"role":"assistant","content":"done"}`), &reply); err != nil {
+		t.Fatal(err)
+	}
+
+	s := start(t)
+	if err := s.AppendRound(reply, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := lines(t, s)[1:]; len(got) != 1 || len(s.Messages()) != 1 {
+		t.Errorf("file %q, %d messages in memory", got, len(s.Messages()))
+	}
 }

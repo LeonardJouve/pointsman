@@ -57,12 +57,15 @@ call `Call` directly, without a gRPC server.
 
 **session**: `Session{ID, Agent, Created}` (`Agent` is a `*agent.Agent`) and an unexported log.
 `session.New(a)` returns a `*Session` and an error, with a random ID (stdlib `uuid.New()`; V7 if sorting by creation is
-ever needed), `Created` set to `time.Now()`, and no messages. `AppendUser`, `AppendReply` and `AppendToolResult` are the
-only way the loop writes the log and return an error; a log entry is a `provider.Message`. A mutex guards the log: the
+ever needed), `Created` set to `time.Now()`, and no messages. `AppendUser` and `AppendRound` are the
+only way the loop writes the log and return an error; a log entry is a `provider.Message`. `AppendRound(reply, outputs)`
+writes a reply and its tool results, in call order, in one write, so a recorded round is a checkpoint: all of it is in
+the file or none (a resumed session restarts from it, and the model API rejects a reply missing results); readers see it
+whole, with one wake-up. It does not check `len(outputs)`: the loop builds both. A mutex guards the log: the
 Append methods lock, and `Messages()` locks and returns a copy, so a reader (an HTTP handler) never shares the slice
 with the loop. The same mutex guards the run status: `Status` is a string type with three words, `running`,
 `succeeded` and `failed` (`Running`, `Succeeded`, `Failed`), so the JSON is the word; `New` sets `Running`; `Status()`
-and `SetStatus()` lock. Every Append and `SetStatus` closes a `changed` channel and makes a new one;
+and `SetStatus()` lock. Every append and `SetStatus` closes a `changed` channel and makes a new one;
 `Changed()` returns the current one. The stream calls `Changed()`, then `Status()`, then `Messages()`: a later change
 closes the channel, so no wake-up is missed, and the status is read before the log because `loop.Run` sets it last (no
 `sync.Cond`, no polling). `loop.Run` calls `SetStatus` once, before it returns (`Succeeded` or `Failed`); it logs the
@@ -75,11 +78,11 @@ one JSON object with one key per line (the keys are the `kind` constants), in `s
 `New` creates it (it must not exist) with `{"header":{"created":"<RFC3339>","agent":"<agent id>"}}`: the agent id,
 not a copy of the agent. Then `{"message":<provider.Message>}` for every message, and `{"status":"succeeded"}` or
 `{"status":"failed"}` when the status is set; `Running` is never written, it is the absence of a status line, so a
-file with no status line has not ended. Every line is one append: the file is opened, written and closed each time, the
-session holds no handle, and there is no sync. The Append methods write the line first and change the memory only if
-it succeeded, so the log never holds a message the file does not; a failed write returns the error and changes
-nothing. `SetStatus` is the exception: it sets the memory and wakes the readers even if the write fails (the stream
-would wait on `Running` forever), then returns the write error. Nothing reads the files yet.
+file with no status line has not ended. Every write is one append: the file is opened, written and closed each time, the
+session holds no handle, and there is no sync. The lines of one round go in one write. The Append methods write first
+and change the memory only if it succeeded, so the log never holds a message the file does not; a failed write returns
+the error and changes nothing. `SetStatus` is the exception: it sets the memory and wakes the readers even if the write
+fails (the stream would wait on `Running` forever), then returns the write error. Nothing reads the files yet.
 
 **loop**: `loop.Run(ctx, s, client, dispatcher)` runs a session until the model answers without tool calls. The
 caller appends the user message first and reads the answer from the last message of the log.
@@ -252,9 +255,6 @@ Deferred):
 
 - **Transient provider errors.** The loop does not retry a failed `Send` (D16); it returns the error with the log
   unchanged, so the caller may call `Run` again.
-- **A reply before its tool results.** A reader can see the assistant reply before its tool results are appended.
-  The window is a few microseconds and harmless; the stream reads the status before the log, so a finished run
-  is sent whole.
 - **Memory and the model.** Sessions are written to their files but not yet loaded at startup; agents are persisted.
 - **The session holds a pointer to its agent.** Safe because agents are immutable. Revisit when agents become
   editable: a session would then need its own copy to pin the config version (D12, D18).

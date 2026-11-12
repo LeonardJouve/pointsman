@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/LeonardJouve/pointsman/agent"
+	"github.com/LeonardJouve/pointsman/provider"
 	"github.com/LeonardJouve/pointsman/store"
 	"uuid"
 )
@@ -95,4 +97,39 @@ func TestWriteFails(t *testing.T) {
 		t.Errorf("SetStatus: err %v, status %v", err, s.Status())
 	}
 	<-changed
+}
+
+func TestAppendRoundFails(t *testing.T) {
+	s := start(t)
+
+	var reply provider.Reply
+	if err := json.Unmarshal([]byte(twoCallsReply), &reply); err != nil {
+		t.Fatal(err)
+	}
+
+	// A directory in place of the file makes the open fail.
+	dir, err := store.Sessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(dir, s.ID.String()+".jsonl")
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	changed := s.Changed()
+	if err := s.AppendRound(reply, []string{"one", "two"}); err == nil || len(s.Messages()) != 0 {
+		t.Errorf("err %v, %d messages", err, len(s.Messages()))
+	}
+
+	select {
+	case <-changed:
+		t.Error("notified after a failed write")
+	default:
+	}
 }

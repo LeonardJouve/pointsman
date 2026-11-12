@@ -41,27 +41,30 @@ func New(a *agent.Agent) (*Session, error) {
 }
 
 func (s *Session) AppendUser(text string) error {
-	return s.append(provider.User(text))
+	return s.append([]provider.Message{provider.User(text)})
 }
 
-func (s *Session) AppendReply(reply provider.Reply) error {
-	return s.append(reply.ToParam())
+// AppendRound writes a reply and the outputs of its tool calls, in call order, in one write: a kill leaves the
+// whole round in the file or none of it, never a reply missing results. Readers see the round whole.
+func (s *Session) AppendRound(reply provider.Reply, outputs []string) error {
+	round := []provider.Message{reply.ToParam()}
+	for i, call := range reply.ToolCalls {
+		round = append(round, provider.ToolResult(call.ID, outputs[i]))
+	}
+
+	return s.append(round)
 }
 
-func (s *Session) AppendToolResult(callID, output string) error {
-	return s.append(provider.ToolResult(callID, output))
-}
-
-// append writes the message to the file first, so the log never holds a message the file does not.
-func (s *Session) append(message provider.Message) error {
+// append writes the messages to the file first, so the log never holds a message the file does not.
+func (s *Session) append(messages []provider.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := appendMessage(s.ID, message); err != nil {
+	if err := appendMessages(s.ID, messages); err != nil {
 		return err
 	}
 
-	s.messages = append(s.messages, message)
+	s.messages = append(s.messages, messages...)
 	s.notify()
 
 	return nil
