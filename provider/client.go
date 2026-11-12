@@ -72,3 +72,17 @@ func (c *Client) Send(ctx context.Context, request Request) (Reply, error) {
 
 	return choice.Message, nil
 }
+
+func (c *Client) Models(ctx context.Context) ([]string, error) {
+	page, err := c.sdk.Models.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := []string{}
+	for _, model := range page.Data {
+		ids = append(ids, model.ID)
+	}
+
+	return ids, nil
+}

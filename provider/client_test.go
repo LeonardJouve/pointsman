@@ -25,7 +25,7 @@ func serve(t *testing.T, reply string) (*Client, *map[string]any) {
 	var got map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		if err := json.Unmarshal(body, &got); err != nil {
+		if err := json.Unmarshal(body, &got); len(body) > 0 && err != nil {
 			t.Error(err)
 		}
 
@@ -162,5 +162,18 @@ func TestSendTruncated(t *testing.T) {
 
 	if _, err := client.Send(context.Background(), Request{}); err == nil {
 		t.Error("expected truncated error")
+	}
+}
+
+func TestModels(t *testing.T) {
+	client, _ := serve(t, `{"object":"list","data":[{"id":"a","object":"model"},{"id":"b","object":"model"}]}`)
+
+	ids, err := client.Models(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(ids) != 2 || ids[0] != "a" || ids[1] != "b" {
+		t.Errorf("got %v", ids)
 	}
 }

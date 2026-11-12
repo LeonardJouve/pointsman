@@ -44,6 +44,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /sessions", s.createSession)
 	mux.HandleFunc("GET /sessions/{id}", s.getSession)
 	mux.HandleFunc("GET /sessions/{id}/events", s.streamSession)
+	mux.HandleFunc("GET /models", s.listModels)
 
 	return mux
 }
