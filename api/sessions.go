@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 	"uuid"
 
@@ -108,6 +109,9 @@ func (s *Server) streamSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	next := 0
+	if last, err := strconv.Atoi(r.Header.Get("Last-Event-ID")); err == nil {
+		next = last + 1
+	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -122,8 +126,10 @@ func (s *Server) streamSession(w http.ResponseWriter, r *http.Request) {
 		status := found.Status()
 		messages := found.Messages()
 
+		next = max(0, min(next, len(messages)))
+
 		for _, message := range messages[next:] {
-			writeEntry(w, next, message)
+			writeMessage(w, next, message)
 			next++
 		}
 

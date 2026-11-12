@@ -113,13 +113,15 @@ vanish at restart; storage is a later piece.
   only logs its error with `log.Print`. Nothing cancels a run: a stopped router kills its runs and loses its sessions.
 - `GET /sessions/{id}` returns `200` and `{"status": "...", "messages": [...]}`, the log as `provider.Message`
   (OpenAI wire format).
-- `GET /sessions/{id}/events` is a server-sent event stream (D30), plain `net/http` with `Flush`. Every frame is a
-  `data:` line holding `{"event": "<type>", "data": <payload>}`: the client reads the type from the JSON, there is no
-  `event:` line. Three types, written in `api/sse.go`: `message` is a log entry (payload the message JSON, frame
-  `id: <log index>`), `status` is the final frame (payload the status word, no `id`), `keep-alive` has no payload and
-  no `id`. Every connection starts at entry 0: it replays the log, then follows the run (the `id` lets a client skip
-  entries it has seen). When the status is not `running` it writes the remaining entries, then `status`, and closes.
-  While running it waits for a change, the client leaving, or a 15 s tick that writes `keep-alive`.
+- `GET /sessions/{id}/events` is a server-sent event stream (D30), plain `net/http` with `Flush`. Frames use the
+  SSE fields and the `data:` line is a JSON object: a log entry is `id: <log index>`, `event: message`, `data:` the
+  message JSON; the final frame has no `id`: `event: status`, `data: {"status": "<word>"}`. `api/sse.go` writes
+  the frames (`writeMessage`, `writeStatus`, `writeKeepAlive`, over `writeEvent`). A connection starts at entry 0,
+  or after the entry named by the `Last-Event-ID` header when it is an integer in the log (past the log it starts at
+  the end; anything else, not a number, negative or overflowing, starts at entry 0). When the
+  status is not `running` it writes the remaining entries, then `status`, and closes. While running it waits for a
+  change, the client leaving, or a 15 s tick that writes the comment `: keep-alive`. A client should close on
+  `status`: `EventSource` reconnects when the server closes.
 - Errors are `{"error": "..."}`: bad JSON, an unknown tool name, or (for a session) an agent id that
   is not a uuid or not known is a 400; an unknown or malformed session id is a 404.
 

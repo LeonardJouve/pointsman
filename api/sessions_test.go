@@ -133,9 +133,9 @@ func TestStreamFinishedSession(t *testing.T) {
 	finished(t, handler, path)
 
 	code, body := events(handler, path)
-	want := "id: 0\ndata: {\"event\":\"message\",\"data\":{\"content\":\"hello\",\"role\":\"user\"}}\n\n" +
-		"id: 1\ndata: {\"event\":\"message\",\"data\":{\"content\":\"done\",\"role\":\"assistant\"}}\n\n" +
-		"data: {\"event\":\"status\",\"data\":\"succeeded\"}\n\n"
+	want := "id: 0\nevent: message\ndata: {\"content\":\"hello\",\"role\":\"user\"}\n\n" +
+		"id: 1\nevent: message\ndata: {\"content\":\"done\",\"role\":\"assistant\"}\n\n" +
+		"event: status\ndata: {\"status\":\"succeeded\"}\n\n"
 	if code != http.StatusOK || body != want {
 		t.Errorf("got %d %q, want %q", code, body, want)
 	}
@@ -163,8 +163,8 @@ func TestStreamRunningSession(t *testing.T) {
 	close(release)
 
 	body := <-done
-	if !strings.Contains(body, "id: 1\ndata: {\"event\":\"message\",\"data\":{\"content\":\"done\"") ||
-		!strings.HasSuffix(body, "\"data\":\"succeeded\"}\n\n") {
+	if !strings.Contains(body, "id: 1\nevent: message\ndata: {\"content\":\"done\"") ||
+		!strings.HasSuffix(body, "event: status\ndata: {\"status\":\"succeeded\"}\n\n") {
 		t.Errorf("got %q", body)
 	}
 }
@@ -179,11 +179,38 @@ func TestStreamUnknownSession(t *testing.T) {
 	}
 }
 
+func TestStreamResume(t *testing.T) {
+	handler := serve(t, 200, `{"choices":[{"message":{"role":"assistant","content":"done"}}]}`)
+	path := start(t, handler)
+	finished(t, handler, path)
+
+	status := "event: status\ndata: {\"status\":\"succeeded\"}\n\n"
+	first := "id: 0\nevent: message\ndata: {\"content\":\"hello\",\"role\":\"user\"}\n\n"
+	second := "id: 1\nevent: message\ndata: {\"content\":\"done\",\"role\":\"assistant\"}\n\n"
+
+	for last, want := range map[string]string{
+		"0":                   second + status,
+		"1":                   status,
+		"99":                  status,
+		"-1":                  first + second + status,
+		"9223372036854775807": first + second + status,
+	} {
+		request := httptest.NewRequest("GET", path+"/events", nil)
+		request.Header.Set("Last-Event-ID", last)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Body.String() != want {
+			t.Errorf("%s: got %q, want %q", last, recorder.Body.String(), want)
+		}
+	}
+}
+
 func TestWriteKeepAlive(t *testing.T) {
 	var out strings.Builder
 	writeKeepAlive(&out)
 
-	if want := "data: {\"event\":\"keep-alive\"}\n\n"; out.String() != want {
+	if want := ": keep-alive\n\n"; out.String() != want {
 		t.Errorf("got %q, want %q", out.String(), want)
 	}
 }

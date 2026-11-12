@@ -10,30 +10,31 @@ import (
 )
 
 const (
-	eventMessage   = "message"
-	eventStatus    = "status"
-	eventKeepAlive = "keep-alive"
+	eventMessage = "message"
+	eventStatus  = "status"
 )
 
-// event is the JSON of every frame: the client reads the type from Event.
-type event struct {
-	Event string `json:"event"`
-	Data  any    `json:"data,omitempty"`
+type statusEvent struct {
+	Status session.Status `json:"status"`
 }
 
-// writeEntry writes a log entry; the frame id is its log index.
-func writeEntry(w io.Writer, index int, message provider.Message) {
-	data, _ := json.Marshal(event{Event: eventMessage, Data: message})
-	fmt.Fprintf(w, "id: %d\ndata: %s\n\n", index, data)
+// writeEvent writes a frame: the event name and the JSON of payload.
+func writeEvent(w io.Writer, name string, payload any) {
+	data, _ := json.Marshal(payload)
+	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", name, data)
+}
+
+// writeMessage writes a log entry; the frame id is its log index.
+func writeMessage(w io.Writer, index int, message provider.Message) {
+	fmt.Fprintf(w, "id: %d\n", index)
+	writeEvent(w, eventMessage, message)
 }
 
 // writeStatus writes the final frame, which has no id.
 func writeStatus(w io.Writer, status session.Status) {
-	data, _ := json.Marshal(event{Event: eventStatus, Data: status})
-	fmt.Fprintf(w, "data: %s\n\n", data)
+	writeEvent(w, eventStatus, statusEvent{Status: status})
 }
 
 func writeKeepAlive(w io.Writer) {
-	data, _ := json.Marshal(event{Event: eventKeepAlive})
-	fmt.Fprintf(w, "data: %s\n\n", data)
+	fmt.Fprint(w, ": keep-alive\n\n")
 }
