@@ -22,13 +22,21 @@ A pointsman is the railway worker who operates the movable rails that send a tra
 See [SPEC.md](SPEC.md) for what this project is and how it is designed.
 
 ## Run
+
+### Setup
+
 Copy `.env.example` to `.env` update the values.
 
 `.env` is read unless `ENVIRONMENT=production`.
 
-Run the dispatcher: `go run ./cmd/dispatcher`.
+### Dispatcher
 
-Run the router: `go run ./cmd/router`.
+`go run ./cmd/dispatcher`.
+
+### Router
+`go run ./cmd/router`.
+
+### Playground
 
 Try the API with [playground.http](playground.http). It lists the models, creates an agent and a session, and streams the events.
 
