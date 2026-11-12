@@ -23,7 +23,7 @@ func serve(t *testing.T, code int, body string) http.Handler {
 	}))
 	t.Cleanup(model.Close)
 
-	return New(provider.New(model.URL, "key"), nil).Handler()
+	return newHandler(t, provider.New(model.URL, "key"))
 }
 
 func send(handler http.Handler, method, path, body string) *httptest.ResponseRecorder {
@@ -96,7 +96,7 @@ func TestSessionFails(t *testing.T) {
 }
 
 func TestCreateSessionErrors(t *testing.T) {
-	handler := New(nil, nil).Handler()
+	handler := newHandler(t, nil)
 
 	for name, body := range map[string]string{
 		"bad json":      `{`,
@@ -110,7 +110,7 @@ func TestCreateSessionErrors(t *testing.T) {
 }
 
 func TestGetUnknownSession(t *testing.T) {
-	handler := New(nil, nil).Handler()
+	handler := newHandler(t, nil)
 
 	for _, id := range []string{"nope", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"} {
 		if code := send(handler, "GET", "/sessions/"+id, "").Code; code != http.StatusNotFound {
@@ -150,7 +150,7 @@ func TestStreamRunningSession(t *testing.T) {
 	}))
 	t.Cleanup(model.Close)
 
-	handler := New(provider.New(model.URL, "key"), nil).Handler()
+	handler := newHandler(t, provider.New(model.URL, "key"))
 	path := start(t, handler)
 	done := make(chan string)
 
@@ -170,7 +170,7 @@ func TestStreamRunningSession(t *testing.T) {
 }
 
 func TestStreamUnknownSession(t *testing.T) {
-	handler := New(nil, nil).Handler()
+	handler := newHandler(t, nil)
 
 	for _, id := range []string{"nope", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"} {
 		if code, _ := events(handler, "/sessions/"+id); code != http.StatusNotFound {

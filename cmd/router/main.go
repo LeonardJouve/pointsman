@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/LeonardJouve/pointsman/agent"
 	"github.com/LeonardJouve/pointsman/api"
 	"github.com/LeonardJouve/pointsman/dispatch"
 	"github.com/LeonardJouve/pointsman/env"
@@ -45,10 +46,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	agents, err := agent.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	client := provider.New(baseURL, apiKey)
 	dispatcher := dispatch.NewDispatcherClient(conn)
 
-	handler := api.New(client, dispatcher).Handler()
+	handler := api.New(client, dispatcher, agents).Handler()
 
 	log.Fatal(http.ListenAndServe(routerAddr, handler))
 }

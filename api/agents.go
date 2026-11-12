@@ -28,6 +28,12 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 
 	id := uuid.New()
 
+	if err := agent.Save(id, a); err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+
+		return
+	}
+
 	s.mutex.Lock()
 	s.agents[id] = a
 	s.mutex.Unlock()

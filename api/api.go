@@ -33,11 +33,11 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-func New(client *provider.Client, dispatcher dispatch.DispatcherClient) *Server {
+func New(client *provider.Client, dispatcher dispatch.DispatcherClient, agents map[uuid.UUID]agent.Agent) *Server {
 	return &Server{
 		client:     client,
 		dispatcher: dispatcher,
-		agents:     map[uuid.UUID]agent.Agent{},
+		agents:     agents,
 		sessions:   map[uuid.UUID]*session.Session{},
 	}
 }
