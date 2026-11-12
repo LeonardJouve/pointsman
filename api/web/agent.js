@@ -1,9 +1,10 @@
-export async function agent(element) {
-  const response = await fetch("/agents");
-  const body = await response.json();
+import {request} from "./api.js";
 
-  if (!response.ok) {
-    element.textContent = body.error;
+export async function agent(element) {
+  const [body, error] = await request("/agents");
+
+  if (error) {
+    element.textContent = error;
 
     return;
   }

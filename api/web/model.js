@@ -1,9 +1,10 @@
-export async function model(element) {
-  const response = await fetch("/models");
-  const body = await response.json();
+import {request} from "./api.js";
 
-  if (!response.ok) {
-    element.textContent = body.error;
+export async function model(element) {
+  const [body, error] = await request("/models");
+
+  if (error) {
+    element.textContent = error;
 
     return;
   }

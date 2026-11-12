@@ -1,3 +1,6 @@
+import {field} from "./form.js";
+import {request} from "./api.js";
+
 export function sessionForm(element, onCreate) {
   const form = document.createElement("form");
 
@@ -26,27 +29,25 @@ export function sessionForm(element, onCreate) {
   const modal = element.closest(".modal");
 
   modal.addEventListener("show.bs.modal", async () => {
-    const response = await fetch("/agents");
-    const body = await response.json();
+    const [agents, failure] = await request("/agents");
 
-    if (!response.ok) {
+    if (failure) {
       agent.replaceChildren();
-      error.textContent = body.error;
+      error.textContent = failure;
 
       return;
     }
 
     error.textContent = "";
-    agent.replaceChildren(...Object.entries(body).map(([id, found]) => new Option(found.name || id, id)));
+    agent.replaceChildren(...Object.entries(agents).map(([id, found]) => new Option(found.name || id, id)));
   });
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const body = {agent: agent.value, prompt: prompt.value};
-    const response = await fetch("/sessions", {method: "POST", body: JSON.stringify(body)});
-    if (!response.ok) {
-      error.textContent = (await response.json()).error;
+    const [, failure] = await request("/sessions", {agent: agent.value, prompt: prompt.value});
+    if (failure) {
+      error.textContent = failure;
 
       return;
     }
@@ -56,17 +57,4 @@ export function sessionForm(element, onCreate) {
     bootstrap.Modal.getOrCreateInstance(modal).hide();
     onCreate();
   });
-}
-
-function field(label, input) {
-  const group = document.createElement("div");
-  group.className = "mb-3";
-
-  const text = document.createElement("label");
-  text.className = "form-label";
-  text.textContent = label;
-
-  group.append(text, input);
-
-  return group;
 }

@@ -146,7 +146,9 @@ vanish at restart; storage is a later piece.
   (the id is the label when the name is empty), a prompt, Create and Cancel. It sends `POST /sessions`; on success the
   modal closes, the form resets and the list reloads; on failure the modal stays open with the error text. `model.js`
   lists `GET /models`, and `tool.js` shows `GET /tools`, each tool a folded `<details>` in a bordered list, with its
-  name as summary, then its description and parameters as JSON. A failed fetch shows its error text instead.
+  name as summary, then its description and parameters as JSON. A failed fetch shows its error text instead. `api.js`
+  (`request`: GET or POST JSON, returns the body or the API's error text) and `form.js` (`field`) are shared; there is
+  one file per tab otherwise.
 - Errors are `{"error": "..."}`: bad JSON, an unknown tool name, or (for a session) an agent id that is not a uuid or
   not known is a 400; an unknown or malformed session id is a 404.
 

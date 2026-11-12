@@ -1,9 +1,10 @@
-export async function tool(element) {
-  const response = await fetch("/tools");
-  const body = await response.json();
+import {request} from "./api.js";
 
-  if (!response.ok) {
-    element.textContent = body.error;
+export async function tool(element) {
+  const [body, error] = await request("/tools");
+
+  if (error) {
+    element.textContent = error;
 
     return;
   }

@@ -1,3 +1,5 @@
+import {request} from "./api.js";
+
 const colors = {
   running: "bg-warning",
   succeeded: "bg-success",
@@ -5,11 +7,10 @@ const colors = {
 };
 
 export async function session(element) {
-  const response = await fetch("/sessions");
-  const body = await response.json();
+  const [body, error] = await request("/sessions");
 
-  if (!response.ok) {
-    element.textContent = body.error;
+  if (error) {
+    element.textContent = error;
 
     return;
   }

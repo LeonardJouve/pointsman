@@ -1,3 +1,6 @@
+import {field} from "./form.js";
+import {request} from "./api.js";
+
 const efforts = ["minimal", "low", "medium", "high", "xhigh", "max"];
 
 export async function agentForm(element, onCreate) {
@@ -64,9 +67,9 @@ export async function agentForm(element, onCreate) {
       agent.max_tokens = Number(maxTokens.value);
     }
 
-    const response = await fetch("/agents", {method: "POST", body: JSON.stringify(agent)});
-    if (!response.ok) {
-      error.textContent = (await response.json()).error;
+    const [, failure] = await request("/agents", agent);
+    if (failure) {
+      error.textContent = failure;
 
       return;
     }
@@ -77,34 +80,19 @@ export async function agentForm(element, onCreate) {
     onCreate();
   });
 
-  const models = await fetch("/models");
-  const modelsBody = await models.json();
-  if (models.ok) {
-    model.append(...modelsBody.map((id) => new Option(id)));
+  const [models, modelsError] = await request("/models");
+  if (modelsError) {
+    model.replaceWith(modelsError);
   } else {
-    model.replaceWith(modelsBody.error);
+    model.append(...models.map((id) => new Option(id)));
   }
 
-  const toolsResponse = await fetch("/tools");
-  const toolsBody = await toolsResponse.json();
-  if (toolsResponse.ok) {
-    tools.append(...toolsBody.map((schema) => checkbox(schema.Name)));
+  const [schemas, toolsError] = await request("/tools");
+  if (toolsError) {
+    tools.textContent = toolsError;
   } else {
-    tools.textContent = toolsBody.error;
+    tools.append(...schemas.map((schema) => checkbox(schema.Name)));
   }
-}
-
-function field(label, input) {
-  const group = document.createElement("div");
-  group.className = "mb-3";
-
-  const text = document.createElement("label");
-  text.className = "form-label";
-  text.textContent = label;
-
-  group.append(text, input);
-
-  return group;
 }
 
 function checkbox(value) {
