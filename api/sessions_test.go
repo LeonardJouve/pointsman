@@ -118,3 +118,72 @@ func TestGetUnknownSession(t *testing.T) {
 		}
 	}
 }
+
+// events reads a stream request to its end and returns the body.
+func events(handler http.Handler, path string) (code int, body string) {
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest("GET", path+"/events", nil))
+
+	return recorder.Code, recorder.Body.String()
+}
+
+func TestStreamFinishedSession(t *testing.T) {
+	handler := serve(t, 200, `{"choices":[{"message":{"role":"assistant","content":"done"}}]}`)
+	path := start(t, handler)
+	finished(t, handler, path)
+
+	code, body := events(handler, path)
+	want := "id: 0\ndata: {\"event\":\"message\",\"data\":{\"content\":\"hello\",\"role\":\"user\"}}\n\n" +
+		"id: 1\ndata: {\"event\":\"message\",\"data\":{\"content\":\"done\",\"role\":\"assistant\"}}\n\n" +
+		"data: {\"event\":\"status\",\"data\":\"succeeded\"}\n\n"
+	if code != http.StatusOK || body != want {
+		t.Errorf("got %d %q, want %q", code, body, want)
+	}
+}
+
+func TestStreamRunningSession(t *testing.T) {
+	release := make(chan struct{})
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"done"}}]}`))
+	}))
+	t.Cleanup(model.Close)
+
+	handler := New(provider.New(model.URL, "key"), nil).Handler()
+	path := start(t, handler)
+	done := make(chan string)
+
+	go func() {
+		_, body := events(handler, path)
+		done <- body
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+
+	body := <-done
+	if !strings.Contains(body, "id: 1\ndata: {\"event\":\"message\",\"data\":{\"content\":\"done\"") ||
+		!strings.HasSuffix(body, "\"data\":\"succeeded\"}\n\n") {
+		t.Errorf("got %q", body)
+	}
+}
+
+func TestStreamUnknownSession(t *testing.T) {
+	handler := New(nil, nil).Handler()
+
+	for _, id := range []string{"nope", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"} {
+		if code, _ := events(handler, "/sessions/"+id); code != http.StatusNotFound {
+			t.Errorf("%s: got %d", id, code)
+		}
+	}
+}
+
+func TestWriteKeepAlive(t *testing.T) {
+	var out strings.Builder
+	writeKeepAlive(&out)
+
+	if want := "data: {\"event\":\"keep-alive\"}\n\n"; out.String() != want {
+		t.Errorf("got %q, want %q", out.String(), want)
+	}
+}

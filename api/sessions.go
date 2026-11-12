@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 	"uuid"
 
 	"github.com/LeonardJouve/pointsman/loop"
 	"github.com/LeonardJouve/pointsman/provider"
 	"github.com/LeonardJouve/pointsman/session"
 )
+
+// keepAliveInterval is how often an idle stream writes a comment line.
+const keepAliveInterval = 15 * time.Second
 
 type sessionRequest struct {
 	Agent  string `json:"agent"`
@@ -82,4 +86,63 @@ func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reply(w, http.StatusOK, sessionResponse{Status: found.Status(), Messages: found.Messages()})
+}
+
+// streamSession sends the log as server-sent events, then the final status, and closes.
+func (s *Server) streamSession(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		fail(w, http.StatusNotFound, "unknown session")
+
+		return
+	}
+
+	s.mutex.Lock()
+	found, ok := s.sessions[id]
+	s.mutex.Unlock()
+
+	if !ok {
+		fail(w, http.StatusNotFound, "unknown session")
+
+		return
+	}
+
+	next := 0
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	out := http.NewResponseController(w)
+	tick := time.NewTicker(keepAliveInterval)
+	defer tick.Stop()
+
+	for {
+		// Order matters
+		changed := found.Changed()
+		status := found.Status()
+		messages := found.Messages()
+
+		for _, message := range messages[next:] {
+			writeEntry(w, next, message)
+			next++
+		}
+
+		if status != session.Running {
+			writeStatus(w, status)
+			out.Flush()
+
+			return
+		}
+
+		out.Flush()
+
+		select {
+		case <-changed:
+		case <-tick.C:
+			writeKeepAlive(w)
+			out.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
 }

@@ -23,10 +23,16 @@ type Session struct {
 	Agent    agent.Agent
 	messages []provider.Message
 	status   Status
+	changed  chan struct{}
 }
 
 func New(a agent.Agent) *Session {
-	return &Session{ID: uuid.New(), Agent: a, status: Running}
+	return &Session{
+		ID:      uuid.New(),
+		Agent:   a,
+		status:  Running,
+		changed: make(chan struct{}),
+	}
 }
 
 func (s *Session) AppendUser(text string) {
@@ -34,6 +40,7 @@ func (s *Session) AppendUser(text string) {
 	defer s.mu.Unlock()
 
 	s.messages = append(s.messages, provider.User(text))
+	s.notify()
 }
 
 func (s *Session) AppendReply(reply provider.Reply) {
@@ -41,6 +48,7 @@ func (s *Session) AppendReply(reply provider.Reply) {
 	defer s.mu.Unlock()
 
 	s.messages = append(s.messages, reply.ToParam())
+	s.notify()
 }
 
 func (s *Session) AppendToolResult(callID, output string) {
@@ -48,6 +56,7 @@ func (s *Session) AppendToolResult(callID, output string) {
 	defer s.mu.Unlock()
 
 	s.messages = append(s.messages, provider.ToolResult(callID, output))
+	s.notify()
 }
 
 // Messages returns a copy of the log, safe to read while the loop appends.
@@ -70,4 +79,19 @@ func (s *Session) SetStatus(status Status) {
 	defer s.mu.Unlock()
 
 	s.status = status
+	s.notify()
+}
+
+// Changed returns a channel that is closed at the next change.
+func (s *Session) Changed() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.changed
+}
+
+// notify wakes the readers of Changed; the caller holds the lock.
+func (s *Session) notify() {
+	close(s.changed)
+	s.changed = make(chan struct{})
 }

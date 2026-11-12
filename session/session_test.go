@@ -93,3 +93,35 @@ func TestMessagesWhileAppending(t *testing.T) {
 		t.Errorf("got %d messages, want 100", got)
 	}
 }
+
+func TestChanged(t *testing.T) {
+	s := New(agent.Agent{})
+	changed := s.Changed()
+
+	select {
+	case <-changed:
+		t.Fatal("closed before any change")
+	default:
+	}
+
+	s.AppendUser("a")
+	<-changed
+
+	changed = s.Changed()
+	s.SetStatus(Succeeded)
+	<-changed
+}
+
+func TestChangedWakesReader(t *testing.T) {
+	s := New(agent.Agent{})
+	changed := s.Changed()
+	woken := make(chan struct{})
+
+	go func() {
+		<-changed
+		close(woken)
+	}()
+
+	s.AppendUser("a")
+	<-woken
+}

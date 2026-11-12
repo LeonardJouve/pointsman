@@ -50,7 +50,10 @@ call `Call` directly, without a gRPC server.
 log: the Append methods lock, and `Messages()` locks and returns a copy, so a reader (an HTTP handler) never shares
 the slice with the loop. The same mutex guards the run status: `Status` is a string type with three words, `running`,
 `succeeded` and `failed` (`Running`, `Succeeded`, `Failed`), so the JSON is the word; `New` sets `Running`;
-`Status()` and `SetStatus()` lock. `loop.Run` calls `SetStatus` once,
+`Status()` and `SetStatus()` lock. Every Append and `SetStatus` closes a `changed` channel and makes a new one;
+`Changed()` returns the current one. The stream calls `Changed()`, then `Status()`, then `Messages()`: a later change
+closes the channel, so no wake-up is missed, and the status is read before the log because `loop.Run` sets it last (no
+`sync.Cond`, no polling). `loop.Run` calls `SetStatus` once,
 before it returns (`Succeeded` or `Failed`). A failed run leaves the log unchanged and the session keeps no
 error. The ID never reaches the model (D3): `Context` takes the agent and the messages only.
 
@@ -106,6 +109,13 @@ vanish at restart; storage is a later piece.
   only logs its error with `log.Print`. Nothing cancels a run: a stopped router kills its runs and loses its sessions.
 - `GET /sessions/{id}` returns `200` and `{"status": "...", "messages": [...]}`, the log as `provider.Message`
   (OpenAI wire format).
+- `GET /sessions/{id}/events` is a server-sent event stream (D30), plain `net/http` with `Flush`. Every frame is a
+  `data:` line holding `{"event": "<type>", "data": <payload>}`: the client reads the type from the JSON, there is no
+  `event:` line. Three types, written in `api/sse.go`: `message` is a log entry (payload the message JSON, frame
+  `id: <log index>`), `status` is the final frame (payload the status word, no `id`), `keep-alive` has no payload and
+  no `id`. Every connection starts at entry 0: it replays the log, then follows the run (the `id` lets a client skip
+  entries it has seen). When the status is not `running` it writes the remaining entries, then `status`, and closes.
+  While running it waits for a change, the client leaving, or a 15 s tick that writes `keep-alive`.
 - Errors are `{"error": "..."}`: bad JSON, an unknown tool name, or (for a session) an agent id that
   is not a uuid or not known is a 400; an unknown or malformed session id is a 404.
 
@@ -165,21 +175,24 @@ server, `cmd/dispatcher`, `cmd/router`, `loop` and `api` agents and sessions, ar
 6. **The router API**, in three changes (HTTP, `cmd/router`):
    1. Agents. Built (`api`, above).
    2. Sessions. Built (`api`, above).
-   3. The SSE stream. `GET /sessions/{id}/events`, plain `net/http` with a `Flush`. Decided: SSE, the event id is the
-      log index, `Last-Event-ID` resumes, a periodic comment line keeps the connection alive (D30). Each event is a
-      log entry. Needs: how waiting readers are woken when an entry is appended (this sits in `session`, next to the
-      lock), what ends the stream (the run's status), and the open point "A reply before its tool results".
-   Session shutdown (cancel on stop) comes later: runs use `context.Background()`, so only the process ending
-   stops them.
+   3. The SSE stream. Built (`api` and `session`, above).
 
-Streaming is a change of its own (it changes how `Send` reads the response, D30).
+Left after 6.3, not yet ordered or designed (each is its own change; the points they need are under Open and
+Deferred):
+- Streaming from the model: changes how `Send` reads the response (D30).
+- Session shutdown: cancel a run on stop. Runs use `context.Background()`, so only the process ending stops them.
+- Retry of a failed `Send` in the router (D16).
+- Storage for agents and sessions (both in memory today).
+- Piece 4, the Docker tool, with workspaces.
+- Validating tool arguments against their schema in the router.
 
 ## Open
 
 - **Transient provider errors.** The loop does not retry a failed `Send` (D16); it returns the error with the log
   unchanged, so the caller may call `Run` again.
-- **A reply before its tool results.** A reader can see the assistant reply before its tool results are appended,
-  and the status and the log are two separate reads.
+- **A reply before its tool results.** A reader can see the assistant reply before its tool results are appended.
+  The window is a few microseconds and harmless; the stream reads the status before the log, so a finished run
+  is sent whole.
 - **Memory and the model.** Sessions and agents are in memory only.
 - **The session holds a copy of its agent.** Kept on purpose: the copy pins the config version (D12, D18). Revisit
   when agents become editable; a pointer is safe only if agents are immutable.
