@@ -1,0 +1,4 @@
+[build]
+cmd = "go build -o tmp/router.exe ./cmd/router"
+entrypoint = "tmp/router.exe"
+exclude_dir = ["tmp", ".git"]

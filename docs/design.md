@@ -140,13 +140,13 @@ vanish at restart; storage is a later piece.
   preselected and always sent; the API still treats it as optional. `max_tokens` is sent only when set. `agent.js`
   lists `GET /agents` (the name folded, its attributes unfolded, "No agents" when empty). `session.js` lists
   `GET /sessions` at load and after a create, newest first (sorted in the page by `created`): a folded `<details>` per
-  session with the agent name and the local time, and the status as a Bootstrap badge at the right (warning, success,
-  danger); "No sessions" when empty, nothing unfolded yet. A top-right "New session" button opens `session-form.js` in
-  a modal: an agent dropdown refetched from `GET /agents` on every open (the id is the label when the name is empty),
-  a prompt, Create and Cancel. It sends `POST /sessions`; on success the modal closes, the form resets and the list
-  reloads; on failure the modal stays open with the error text. `model.js` lists `GET /models`, and `tool.js` shows
-  `GET /tools`, each tool a folded `<details>` in a bordered list, with its name as summary, then its description and
-  parameters as JSON. A failed fetch shows its error text instead.
+  session with the agent name and the local time, and the status as a small coloured circle at the right (Bootstrap
+  colours; the word is its hover title and hidden text); "No sessions" when empty, nothing unfolded yet. A top-right
+  "New session" button opens `session-form.js` in a modal: an agent dropdown refetched from `GET /agents` on every open
+  (the id is the label when the name is empty), a prompt, Create and Cancel. It sends `POST /sessions`; on success the
+  modal closes, the form resets and the list reloads; on failure the modal stays open with the error text. `model.js`
+  lists `GET /models`, and `tool.js` shows `GET /tools`, each tool a folded `<details>` in a bordered list, with its
+  name as summary, then its description and parameters as JSON. A failed fetch shows its error text instead.
 - Errors are `{"error": "..."}`: bad JSON, an unknown tool name, or (for a session) an agent id that is not a uuid or
   not known is a 400; an unknown or malformed session id is a 404.
 

@@ -34,7 +34,12 @@ go run ./cmd/dispatcher
 go run ./cmd/router
 ```
 
-Or `./dev.sh` to run both with live reload (needs [air](https://github.com/air-verse/air)).
+Or run each with live reload (needs [air](https://github.com/air-verse/air)):
+
+```bash
+air -c .air.dispatcher.toml
+air -c .air.router.toml
+```
 
 ### Playground
 

@@ -1,0 +1,4 @@
+[build]
+cmd = "go build -o tmp/dispatcher.exe ./cmd/dispatcher"
+entrypoint = "tmp/dispatcher.exe"
+exclude_dir = ["tmp", ".git"]
