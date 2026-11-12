@@ -184,12 +184,12 @@ func (s *Server) streamSession(w http.ResponseWriter, r *http.Request) {
 		next = max(0, min(next, len(messages)))
 
 		for _, message := range messages[next:] {
-			writeMessage(w, next, message)
+			WriteMessage(w, next, message)
 			next++
 		}
 
 		if status != session.Running {
-			writeStatus(w, status)
+			WriteStatus(w, status)
 			out.Flush()
 
 			return

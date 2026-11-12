@@ -24,14 +24,14 @@ func writeEvent(w io.Writer, name string, payload any) {
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", name, data)
 }
 
-// writeMessage writes a log entry; the frame id is its log index.
-func writeMessage(w io.Writer, index int, message provider.Message) {
+// WriteMessage writes a log entry; the frame id is its log index.
+func WriteMessage(w io.Writer, index int, message provider.Message) {
 	fmt.Fprintf(w, "id: %d\n", index)
 	writeEvent(w, eventMessage, message)
 }
 
-// writeStatus writes the final frame, which has no id.
-func writeStatus(w io.Writer, status session.Status) {
+// WriteStatus writes the final frame, which has no id.
+func WriteStatus(w io.Writer, status session.Status) {
 	writeEvent(w, eventStatus, statusEvent{Status: status})
 }
 

@@ -140,6 +140,15 @@ event stream. It writes `output`
 (`session,overhead_ms,status`, one row per session in order) and prints the counts and min, median, p99 and max overhead.
 Status is `succeeded` or `failed` as the router reports it, or `error` when a request failed or the stream ended
 without a status frame; the run goes on.
+With `-single` there is no router: each session is a `./singlesession -prompt i` process (built beforehand, in the
+current folder) whose stdout is read by the same reader, and the `pointsman-*` folders in the temp folder are removed
+at the end.
+
+**cmd/singlesession**: runs one session in its own process, then exits: the baseline for the load experiment
+(`go run ./cmd/singlesession -prompt 17`). The agent is hard-coded (model `fake`, tool `sleep`) and not saved. Same
+environment as the router minus `ROUTER_ADDR`. It prints the log and the final status on stdout in the SSE frame
+format (`api.WriteMessage`, `api.WriteStatus`), and leaves its store folder (`/tmp/pointsman-*`) for the caller to
+remove.
 
 **cmd/router**: loads the agents and sessions (`agent.Load`, `session.Load`), builds
 `provider.New(LLM_BASE_URL, LLM_API_KEY)`, dials the dispatcher at `DISPATCHER_ADDR` (insecure
@@ -186,7 +195,7 @@ loaded by `session.Load` at startup and each new one also written to its file) b
 - `GET /sessions/{id}/events` is a server-sent event stream (D30), plain `net/http` with `Flush`. Frames use the
   SSE fields and the `data:` line is a JSON object: a log entry is `id: <log index>`, `event: message`, `data:` the
   message JSON; the final frame has no `id`: `event: status`, `data: {"status": "<word>"}`. `api/sse.go` writes
-  the frames (`writeMessage`, `writeStatus`, `writeKeepAlive`, over `writeEvent`). A connection starts at entry 0,
+  the frames (`WriteMessage`, `WriteStatus`, `writeKeepAlive`, over `writeEvent`). A connection starts at entry 0,
   or after the entry named by the `Last-Event-ID` header when it is an integer in the log (past the log it starts at
   the end; anything else, not a number, negative or overflowing, starts at entry 0). When the
   status is not `running` it writes the remaining entries, then `status`, and closes. While running it waits for a
