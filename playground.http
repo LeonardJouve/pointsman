@@ -1,0 +1,37 @@
+@host = http://localhost:8080
+
+### Models
+# @name models
+GET {{host}}/models
+
+### Create an agent with the first model
+# @name createAgent
+# @ref models
+POST {{host}}/agents
+Content-Type: application/json
+
+{
+  "model": "{{models[0]}}",
+  "prompt": "You are a helpful assistant.",
+  "tools": ["read", "write"]
+}
+
+### List agents
+GET {{host}}/agents
+
+### Create a session on the agent above
+# @name createSession
+POST {{host}}/sessions
+Content-Type: application/json
+
+{
+  "agent": "{{createAgent.id}}",
+  "prompt": "Read README.md and summarize it."
+}
+
+### Stream the session events (SSE)
+GET {{host}}/sessions/{{createSession.id}}/events
+
+### Get the session: status and messages
+GET {{host}}/sessions/{{createSession.id}}
+
