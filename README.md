@@ -6,6 +6,10 @@ Pointsman is a router that runs the loop of many AI agents in parallel.\
 It calls the model, records each session and delegates tool execution to external sandboxes.\
 Since tool execution is decoupled from the harness, the router only passes data between the sandboxes and the model. A single router can therefore handle many simultaneous sessions.
 
+## History
+![pointsman](./img/pointsman.webp)
+
+A pointsman is the railway worker who operates the movable rails that send a train from one track to another. He stands at the junction and routes each train to the right track.
 
 ## Spec
 See [SPEC.md](SPEC.md) for what this project is and how it is designed.
@@ -18,6 +22,8 @@ Copy `.env.example` to `.env` update the values.
 Run the dispatcher: `go run ./cmd/dispatcher`.
 
 Run the router: `go run ./cmd/router`.
+
+Try the API with [playground.http](playground.http). It lists the models, creates an agent and a session, and streams the events.
 
 ## Test
 Build: `go build ./...`. Test: `go test ./...`.
