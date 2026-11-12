@@ -128,49 +128,59 @@ func run(router, agent string, i int) (string, time.Duration, error) {
 	var work time.Duration
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
-		frame := scanner.Text()
-		if frame != "event: message" && frame != "event: status" {
+		event, ok := strings.CutPrefix(scanner.Text(), "event: ")
+		if !ok {
 			continue
 		}
 		scanner.Scan()
-		data := strings.TrimPrefix(scanner.Text(), "data: ")
+		data := []byte(strings.TrimPrefix(scanner.Text(), "data: "))
 
-		if frame == "event: message" {
-			var msg message
-			if err := json.Unmarshal([]byte(data), &msg); err != nil {
+		switch event {
+		case "message":
+			ms, err := inferenceTime(data)
+			if err != nil {
 				return "", 0, err
 			}
-			if msg.Role != "assistant" {
-				continue
-			}
+			work += ms
+		case "status":
+			var status statusEvent
+			err := json.Unmarshal(data, &status)
 
-			var text inference
-			if err := json.Unmarshal([]byte(msg.Content), &text); err != nil {
-				return "", 0, err
-			}
-			work += time.Duration(text.Ms) * time.Millisecond
-
-			for _, call := range msg.ToolCalls {
-				var arguments sleepArguments
-				if err := json.Unmarshal([]byte(call.Function.Arguments), &arguments); err != nil {
-					return "", 0, err
-				}
-				work += time.Duration(arguments.Ms) * time.Millisecond
-			}
-
-			continue
+			return status.Status, work, err
 		}
-
-		var event statusEvent
-		err := json.Unmarshal([]byte(data), &event)
-
-		return event.Status, work, err
 	}
 	if err := scanner.Err(); err != nil {
 		return "", 0, err
 	}
 
 	return "", 0, fmt.Errorf("events: stream ended without a status")
+}
+
+// inferenceTime returns the work in one message frame: the inference time of an assistant text and its sleep ms.
+func inferenceTime(data []byte) (time.Duration, error) {
+	var msg message
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return 0, err
+	}
+	if msg.Role != "assistant" {
+		return 0, nil
+	}
+
+	var text inference
+	if err := json.Unmarshal([]byte(msg.Content), &text); err != nil {
+		return 0, err
+	}
+	work := time.Duration(text.Ms) * time.Millisecond
+
+	for _, call := range msg.ToolCalls {
+		var arguments sleepArguments
+		if err := json.Unmarshal([]byte(call.Function.Arguments), &arguments); err != nil {
+			return 0, err
+		}
+		work += time.Duration(arguments.Ms) * time.Millisecond
+	}
+
+	return work, nil
 }
 
 // post sends body as JSON and returns the id of the reply.
