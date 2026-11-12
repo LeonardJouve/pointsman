@@ -30,7 +30,8 @@ uuid is the key, two agents may share a name and an empty one is accepted. `Tool
   every `*.json` there into a map of id (the file name) to `*Agent`. Neither takes a folder.
 
 **store**: only decides where things live, never reads or writes their files. `store.Dir()` is
-`<os.UserConfigDir()>/pointsman` (mode 0700), `store.Agents()` is its `agents` folder; both create the folder.
+`<os.UserConfigDir()>/pointsman` (mode 0700), `store.Agents()` and `store.Sessions()` are its `agents` and `sessions`
+folders; all create the folder.
 
 **tool**: `Schema{Name, Description, Parameters}`, a tool's declaration as sent to the model.
 `tool.Get(name)` returns the built-in tool by its name (an unknown name is an error); `provider.Context` and the
@@ -55,19 +56,30 @@ plain Go error: it reaches the router as gRPC `Unknown`. The loop writes a non-z
 call `Call` directly, without a gRPC server.
 
 **session**: `Session{ID, Agent, Created}` (`Agent` is a `*agent.Agent`) and an unexported log.
-`session.New(a)` returns a `*Session` with a
-random ID (stdlib `uuid.New()`; V7 if sorting by creation is ever needed), `Created` set to `time.Now()`, and no
-messages. `AppendUser`, `AppendReply` and `AppendToolResult` are the only way the loop writes the log; a log entry is a
-`provider.Message`. A mutex guards the log: the Append methods lock, and `Messages()` locks and returns a copy, so a
-reader (an HTTP handler) never shares the slice with the loop. The same mutex guards the run status: `Status` is a
-string type with three words, `running`, `succeeded` and `failed` (`Running`, `Succeeded`, `Failed`), so the JSON is
-the word; `New` sets `Running`; `Status()` and `SetStatus()` lock. Every Append and `SetStatus` closes a `changed`
-channel and makes a new one;
+`session.New(a)` returns a `*Session` and an error, with a random ID (stdlib `uuid.New()`; V7 if sorting by creation is
+ever needed), `Created` set to `time.Now()`, and no messages. `AppendUser`, `AppendReply` and `AppendToolResult` are the
+only way the loop writes the log and return an error; a log entry is a `provider.Message`. A mutex guards the log: the
+Append methods lock, and `Messages()` locks and returns a copy, so a reader (an HTTP handler) never shares the slice
+with the loop. The same mutex guards the run status: `Status` is a string type with three words, `running`,
+`succeeded` and `failed` (`Running`, `Succeeded`, `Failed`), so the JSON is the word; `New` sets `Running`; `Status()`
+and `SetStatus()` lock. Every Append and `SetStatus` closes a `changed` channel and makes a new one;
 `Changed()` returns the current one. The stream calls `Changed()`, then `Status()`, then `Messages()`: a later change
 closes the channel, so no wake-up is missed, and the status is read before the log because `loop.Run` sets it last (no
-`sync.Cond`, no polling). `loop.Run` calls `SetStatus` once,
-before it returns (`Succeeded` or `Failed`). A failed run leaves the log unchanged and the session keeps no
-error. The ID never reaches the model (D3): `Context` takes the agent and the messages only.
+`sync.Cond`, no polling). `loop.Run` calls `SetStatus` once, before it returns (`Succeeded` or `Failed`); it logs the
+error with `log.Print`, as a deferred call cannot return it. A failed run leaves the log unchanged and the session
+keeps no error.
+The ID never reaches the model (D3): `Context` takes the agent and the messages only.
+
+The file: `<store.Sessions()>/<id>.jsonl` (mode 0600),
+one JSON object with one key per line (the keys are the `kind` constants), in `session/store.go`.
+`New` creates it (it must not exist) with `{"header":{"created":"<RFC3339>","agent":"<agent id>"}}`: the agent id,
+not a copy of the agent. Then `{"message":<provider.Message>}` for every message, and `{"status":"succeeded"}` or
+`{"status":"failed"}` when the status is set; `Running` is never written, it is the absence of a status line, so a
+file with no status line has not ended. Every line is one append: the file is opened, written and closed each time, the
+session holds no handle, and there is no sync. The Append methods write the line first and change the memory only if
+it succeeded, so the log never holds a message the file does not; a failed write returns the error and changes
+nothing. `SetStatus` is the exception: it sets the memory and wakes the readers even if the write fails (the stream
+would wait on `Running` forever), then returns the write error. Nothing reads the files yet.
 
 **loop**: `loop.Run(ctx, s, client, dispatcher)` runs a session until the model answers without tool calls. The
 caller appends the user message first and reads the answer from the last message of the log.
@@ -112,7 +124,7 @@ A create request is decoded straight into `agent.Agent`; its tool names are chec
 `Context` uses, the router sets its `ID`, then `agent.Save` writes it before the map entry is set (a save error
 is a `500` and nothing is kept).
 `Server` holds the agents (`map[uuid.UUID]*agent.Agent`, persisted) and the sessions (`map[uuid.UUID]*session.Session`,
-in memory only: they vanish at restart) behind one mutex.
+in memory, each also written to its file, but not loaded at restart) behind one mutex.
 - `POST /agents` takes `model`, `prompt`, `tools` (names), and optional `name`, `effort` and `max_tokens`; it returns
   `201` and `{"id": "<uuid>"}`, the id generated by the router.
 - `GET /agents` returns all the agents as a map of id to agent (each also has its `id`; `tools` are the stored
@@ -125,7 +137,8 @@ in memory only: they vanish at restart) behind one mutex.
   `{"error": "..."}`.
 - `POST /sessions` takes `{"agent": "<agent id>", "prompt": "..."}` (an empty prompt is accepted), creates the session,
   appends the prompt, starts `loop.Run(context.Background(), ...)` in a goroutine and returns `201` and
-  `{"id": "<uuid>"}` at once. `Run` sets the status (`succeeded` or `failed`); the goroutine
+  `{"id": "<uuid>"}` at once. A failed file write (`session.New` or the prompt) is a `500`: the session is not kept and
+  no run starts. `Run` sets the status (`succeeded` or `failed`); the goroutine
   only logs its error with `log.Print`. Nothing cancels a run: a stopped router kills its runs and loses its sessions.
 - `GET /sessions` returns a map of session id to `{"created": <RFC3339>, "status": "...", "agent": {...}}` (the
   agent the session holds, with its `id`), `{}` when empty; no messages and no order: the page sorts by `created`.
@@ -228,7 +241,8 @@ Deferred):
 - Streaming from the model: changes how `Send` reads the response (D30).
 - Session shutdown: cancel a run on stop. Runs use `context.Background()`, so only the process ending stops them.
 - Retry of a failed `Send` in the router (D16).
-- Storage for sessions (in memory today).
+- Storage for sessions: the write is built; loading at startup, reading the JSONL and the restart rule (a file with
+  no status line has not ended) are next and open.
 - Piece 4, the Docker tool, with workspaces.
 - Validating tool arguments against their schema in the router.
 - The dashboard tabs, in order: Models, Tools, Agents (list and form) and Sessions (list, form and streamed
@@ -241,7 +255,7 @@ Deferred):
 - **A reply before its tool results.** A reader can see the assistant reply before its tool results are appended.
   The window is a few microseconds and harmless; the stream reads the status before the log, so a finished run
   is sent whole.
-- **Memory and the model.** Sessions are in memory only; agents are persisted.
+- **Memory and the model.** Sessions are written to their files but not yet loaded at startup; agents are persisted.
 - **The session holds a pointer to its agent.** Safe because agents are immutable. Revisit when agents become
   editable: a session would then need its own copy to pin the config version (D12, D18).
 - **No API test with a tool call.** `api` tests use a model that replies without tool calls, so the dispatcher is

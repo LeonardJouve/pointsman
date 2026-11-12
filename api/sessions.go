@@ -60,8 +60,18 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created := session.New(a)
-	created.AppendUser(body.Prompt)
+	created, err := session.New(a)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+
+		return
+	}
+
+	if err := created.AppendUser(body.Prompt); err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+
+		return
+	}
 
 	s.mutex.Lock()
 	s.sessions[created.ID] = created

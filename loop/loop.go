@@ -35,9 +35,7 @@ func Run(ctx context.Context, s *session.Session, client *provider.Client, dispa
 		}
 
 		if len(reply.ToolCalls) == 0 {
-			s.AppendReply(reply)
-
-			return nil
+			return s.AppendReply(reply)
 		}
 
 		outputs, err := callTools(ctx, s, reply, dispatcher)
@@ -45,9 +43,14 @@ func Run(ctx context.Context, s *session.Session, client *provider.Client, dispa
 			return err
 		}
 
-		s.AppendReply(reply)
+		if err := s.AppendReply(reply); err != nil {
+			return err
+		}
+
 		for i, call := range reply.ToolCalls {
-			s.AppendToolResult(call.ID, outputs[i])
+			if err := s.AppendToolResult(call.ID, outputs[i]); err != nil {
+				return err
+			}
 		}
 	}
 }

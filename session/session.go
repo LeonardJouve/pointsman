@@ -28,38 +28,43 @@ type Session struct {
 	changed  chan struct{}
 }
 
-func New(a *agent.Agent) *Session {
-	return &Session{
+func New(a *agent.Agent) (*Session, error) {
+	s := &Session{
 		ID:      uuid.New(),
 		Created: time.Now(),
 		Agent:   a,
 		status:  Running,
 		changed: make(chan struct{}),
 	}
+
+	return s, create(s)
 }
 
-func (s *Session) AppendUser(text string) {
+func (s *Session) AppendUser(text string) error {
+	return s.append(provider.User(text))
+}
+
+func (s *Session) AppendReply(reply provider.Reply) error {
+	return s.append(reply.ToParam())
+}
+
+func (s *Session) AppendToolResult(callID, output string) error {
+	return s.append(provider.ToolResult(callID, output))
+}
+
+// append writes the message to the file first, so the log never holds a message the file does not.
+func (s *Session) append(message provider.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.messages = append(s.messages, provider.User(text))
+	if err := appendMessage(s.ID, message); err != nil {
+		return err
+	}
+
+	s.messages = append(s.messages, message)
 	s.notify()
-}
 
-func (s *Session) AppendReply(reply provider.Reply) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.messages = append(s.messages, reply.ToParam())
-	s.notify()
-}
-
-func (s *Session) AppendToolResult(callID, output string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.messages = append(s.messages, provider.ToolResult(callID, output))
-	s.notify()
+	return nil
 }
 
 // Messages returns a copy of the log, safe to read while the loop appends.
@@ -77,12 +82,16 @@ func (s *Session) Status() Status {
 	return s.status
 }
 
-func (s *Session) SetStatus(status Status) {
+// SetStatus takes a final status and writes it to the file; a file with no status line has not ended.
+// The memory is set and the readers woken even if the write fails, so a reader never waits on Running.
+func (s *Session) SetStatus(status Status) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.status = status
 	s.notify()
+
+	return appendStatus(s.ID, status)
 }
 
 // Changed returns a channel that is closed at the next change.

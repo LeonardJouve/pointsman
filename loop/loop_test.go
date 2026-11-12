@@ -52,9 +52,19 @@ func serve(t *testing.T, replies ...string) *provider.Client {
 	return provider.New(server.URL, "key")
 }
 
-func start() *session.Session {
-	s := session.New(&agent.Agent{})
-	s.AppendUser("go")
+func start(t *testing.T) *session.Session {
+	t.Helper()
+	t.Setenv("AppData", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	s, err := session.New(&agent.Agent{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.AppendUser("go"); err != nil {
+		t.Fatal(err)
+	}
 
 	return s
 }
@@ -81,7 +91,7 @@ func toolContent(s *session.Session, i int) string {
 }
 
 func TestRunNoToolCalls(t *testing.T) {
-	s := start()
+	s := start(t)
 
 	if err := Run(context.Background(), s, serve(t, finalReply), fakeDispatcher(echo)); err != nil {
 		t.Fatal(err)
@@ -97,7 +107,7 @@ func TestRunNoToolCalls(t *testing.T) {
 }
 
 func TestRunToolCalls(t *testing.T) {
-	s := start()
+	s := start(t)
 	dispatcher := fakeDispatcher(func(request *dispatch.Request) (*dispatch.Result, error) {
 		if request.SessionId != s.ID.String() || request.Name != "look" {
 			t.Errorf("request = %+v", request)
@@ -125,7 +135,7 @@ func TestRunToolCalls(t *testing.T) {
 }
 
 func TestRunNonZeroCode(t *testing.T) {
-	s := start()
+	s := start(t)
 	dispatcher := fakeDispatcher(func(request *dispatch.Request) (*dispatch.Result, error) {
 		if request.CallId == "a" {
 			return &dispatch.Result{Output: "boom", Code: 2}, nil
@@ -148,7 +158,7 @@ func TestRunNonZeroCode(t *testing.T) {
 }
 
 func TestRunDispatcherError(t *testing.T) {
-	s := start()
+	s := start(t)
 	down := errors.New("down")
 	dispatcher := fakeDispatcher(func(request *dispatch.Request) (*dispatch.Result, error) {
 		if request.CallId == "b" {
