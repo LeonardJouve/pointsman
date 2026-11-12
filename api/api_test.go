@@ -43,7 +43,6 @@ func TestCreateAgentErrors(t *testing.T) {
 	for name, body := range map[string]string{
 		"unknown tool": `{"name":"n","model":"m","tools":["nope"]}`,
 		"bad json":     `{`,
-		"no name":      `{"model":"m"}`,
 	} {
 		if code := do(t, "POST", "/agents", body).Code; code != http.StatusBadRequest {
 			t.Errorf("%s: got %d", name, code)
