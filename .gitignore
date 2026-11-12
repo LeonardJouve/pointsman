@@ -1,3 +1,4 @@
 .env
 *.excalidraw
+*.exe
 session.jsonl

@@ -26,7 +26,7 @@ Content-Type: application/json
 
 {
   "agent": "{{createAgent.id}}",
-  "prompt": "Read README.md and summarize it."
+  "prompt": "Read README.md, then read docs/design.md, then write a summary of both to summary.md. Read one file at a time."
 }
 
 ### Stream the session events (SSE)

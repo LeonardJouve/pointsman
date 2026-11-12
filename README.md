@@ -29,16 +29,24 @@ Copy `.env.example` to `.env` update the values.
 
 `.env` is read unless `ENVIRONMENT=production`.
 
-### Dispatcher
-
-`go run ./cmd/dispatcher`.
-
-### Router
-`go run ./cmd/router`.
+```bash
+go run ./cmd/dispatcher
+go run ./cmd/router
+```
 
 ### Playground
 
 Try the API with [playground.http](playground.http). It lists the models, creates an agent and a session, and streams the events.
 
-## Test
-Build: `go build ./...`. Test: `go test ./...`.
+### Build
+
+```bash
+go build ./cmd/dispatcher
+go build ./cmd/router
+```
+
+### Test
+
+```bash
+go test ./...
+```
