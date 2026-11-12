@@ -23,7 +23,23 @@
       </li>
     </ul>
     <div class="tab-content py-3">
-      <div class="tab-pane fade show active" id="agent"></div>
+      <div class="tab-pane fade show active" id="agent">
+        <div class="text-end mb-3">
+          <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#agent-modal">New agent</button>
+        </div>
+        <div class="modal fade" id="agent-modal" tabindex="-1">
+          <div class="modal-dialog">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">New agent</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body" id="agent-form"></div>
+            </div>
+          </div>
+        </div>
+        <div id="agent-list"></div>
+      </div>
       <div class="tab-pane fade" id="session"></div>
       <div class="tab-pane fade" id="model"></div>
       <div class="tab-pane fade" id="tool"></div>

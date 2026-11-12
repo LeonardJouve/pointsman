@@ -130,10 +130,15 @@ vanish at restart; storage is a later piece.
 - `GET /` serves the dashboard: static HTML and vanilla JS in `api/web/`, embedded with `go:embed` and served by
   `http.FileServerFS`; the API routes are more specific and win. `index.html` has Bootstrap 5.3.9 from the jsDelivr
   CDN and four tabs (Agents, Sessions, Models, Tools); `main.js` only wires, one ES module per tab. Agents, Models and
-  Tools are built: `agent.js` lists `GET /agents` (the name folded, its attributes unfolded, "No agents" when empty),
+  Tools are built. The Agents pane has two parts: a top-right "New agent" button opens `agent-form.js` in a modal (name,
+  model from `GET /models`, prompt, tools as checkboxes from `GET /tools`, effort and max_tokens; Create and Cancel). It
+  sends `POST /agents`; on success the modal closes, the form resets and the callback reloads the list; on failure the
+  modal stays open with the error text. Effort is a literal list of six SDK values (minimal to max), `medium`
+  preselected and always sent; the API still treats it as optional. `max_tokens` is sent only when set. `agent.js`
+  lists `GET /agents` (the name folded, its attributes unfolded, "No agents" when empty).
   `model.js` lists `GET /models`, and `tool.js` shows `GET /tools`, each tool a folded `<details>` in a bordered list,
-  with its name as summary, then its description and parameters as JSON. They show the error instead on failure; the
-  Sessions pane is empty.
+  with its name as summary, then its description and parameters as JSON. A failed fetch shows its error text instead;
+  the Sessions pane is empty.
 - Errors are `{"error": "..."}`: bad JSON, an unknown tool name, or (for a session) an agent id that is not a uuid or
   not known is a 400; an unknown or malformed session id is a 404.
 
@@ -203,7 +208,7 @@ Deferred):
 - Storage for agents and sessions (both in memory today).
 - Piece 4, the Docker tool, with workspaces.
 - Validating tool arguments against their schema in the router.
-- The dashboard tabs, in order: Models, Tools and the Agents list (built), then the agent form, then the Sessions tab.
+- The dashboard tabs, in order: Models, Tools and Agents (list and form, built), then the Sessions tab.
 
 ## Open
 

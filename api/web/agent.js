@@ -36,7 +36,7 @@ export async function agent(element) {
     list.append(item);
   }
 
-  element.append(list);
+  element.replaceChildren(list);
 }
 
 function attributes(values) {
