@@ -20,7 +20,7 @@ func do(t *testing.T, method, path, body string) *httptest.ResponseRecorder {
 
 func TestCreateAndListAgents(t *testing.T) {
 	handler := New(nil, nil).Handler()
-	const request = `{"model":"m","prompt":"p","tools":["write"],"effort":"low","max_tokens":10}`
+	const request = `{"name":"n","model":"m","prompt":"p","tools":["write"],"effort":"low","max_tokens":10}`
 
 	created := httptest.NewRecorder()
 	handler.ServeHTTP(created, httptest.NewRequest("POST", "/agents", strings.NewReader(request)))
@@ -33,7 +33,7 @@ func TestCreateAndListAgents(t *testing.T) {
 	got := httptest.NewRecorder()
 	handler.ServeHTTP(got, httptest.NewRequest("GET", "/agents", nil))
 
-	want := `{"` + id.ID.String() + `":{"model":"m","prompt":"p","tools":["write"],"effort":"low","max_tokens":10}}`
+	want := `{"` + id.ID.String() + `":` + request + `}`
 	if strings.TrimSpace(got.Body.String()) != want {
 		t.Errorf("got %s, want %s", got.Body, want)
 	}
@@ -41,8 +41,9 @@ func TestCreateAndListAgents(t *testing.T) {
 
 func TestCreateAgentErrors(t *testing.T) {
 	for name, body := range map[string]string{
-		"unknown tool": `{"model":"m","tools":["nope"]}`,
+		"unknown tool": `{"name":"n","model":"m","tools":["nope"]}`,
 		"bad json":     `{`,
+		"no name":      `{"model":"m"}`,
 	} {
 		if code := do(t, "POST", "/agents", body).Code; code != http.StatusBadRequest {
 			t.Errorf("%s: got %d", name, code)
