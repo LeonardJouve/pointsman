@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/openai/openai-go/v3"
 
@@ -43,6 +44,20 @@ func sleepMs(t *testing.T, reply provider.Reply) int {
 	return arguments.Ms
 }
 
+func inferenceOK(t *testing.T, reply provider.Reply) bool {
+	t.Helper()
+
+	var text struct {
+		InferenceMs int `json:"inference_ms"`
+	}
+	if err := json.Unmarshal([]byte(reply.Content), &text); err != nil {
+		t.Fatal(err)
+	}
+	inference := time.Duration(text.InferenceMs) * time.Millisecond
+
+	return inference >= inferenceMin && inference <= inferenceMax
+}
+
 func TestSession(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /chat/completions", complete)
@@ -50,7 +65,12 @@ func TestSession(t *testing.T) {
 	defer server.Close()
 	client := provider.New(server.URL, "x")
 
-	first := sleepMs(t, send(t, client, "17", 0))
+	turn := send(t, client, "17", 0)
+	if !inferenceOK(t, turn) {
+		t.Errorf("tool call reply = %+v", turn)
+	}
+
+	first := sleepMs(t, turn)
 	if first < sleepMin || first > sleepMax {
 		t.Errorf("ms = %d", first)
 	}
@@ -63,7 +83,7 @@ func TestSession(t *testing.T) {
 		t.Errorf("prompt 18 got the same ms as 17: %d", other)
 	}
 
-	if done := send(t, client, "17", rounds); done.Content != "done" || len(done.ToolCalls) != 0 {
+	if done := send(t, client, "17", rounds); !inferenceOK(t, done) || len(done.ToolCalls) != 0 {
 		t.Errorf("last reply = %+v", done)
 	}
 }

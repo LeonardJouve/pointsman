@@ -32,6 +32,8 @@ Copy `.env.example` to `.env` update the values.
 ```bash
 go run ./cmd/dispatcher
 go run ./cmd/router
+go run ./cmd/fakemodel
+go run ./cmd/loadgenerator -n 200
 ```
 
 Or run each with live reload (needs [air](https://github.com/air-verse/air)):

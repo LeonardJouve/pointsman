@@ -50,7 +50,7 @@ func complete(w http.ResponseWriter, r *http.Request) {
 	time.Sleep(inference)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(reply(turn, ms))
+	json.NewEncoder(w).Encode(reply(turn, ms, inference))
 }
 
 // timings returns the inference time and the sleep length of a session and turn, the same in any order and process.
@@ -67,26 +67,22 @@ func timings(prompt string, turn uint64) (inference time.Duration, ms int) {
 
 type Message = map[string]any
 
-// reply is the response body: a sleep call of ms before the last round, "done" after it.
-func reply(turn uint64, ms int) map[string]any {
-	var message Message
+// reply is the response body: a sleep call of ms before the last round, none after it.
+// The text is the inference time, so the load generator can tell it from the router's overhead.
+func reply(turn uint64, ms int, inference time.Duration) map[string]any {
+	message := Message{
+		"role":    "assistant",
+		"content": fmt.Sprintf(`{"inference_ms": %d}`, inference.Milliseconds()),
+	}
 	if turn < rounds {
-		message = Message{
-			"role": "assistant",
-			"tool_calls": []any{map[string]any{
-				"id":   fmt.Sprintf("call_%d", turn),
-				"type": "function",
-				"function": map[string]any{
-					"name":      "sleep",
-					"arguments": fmt.Sprintf(`{"ms": %d}`, ms),
-				},
-			}},
-		}
-	} else {
-		message = Message{
-			"role":    "assistant",
-			"content": "done",
-		}
+		message["tool_calls"] = []any{map[string]any{
+			"id":   fmt.Sprintf("call_%d", turn),
+			"type": "function",
+			"function": map[string]any{
+				"name":      "sleep",
+				"arguments": fmt.Sprintf(`{"ms": %d}`, ms),
+			},
+		}}
 	}
 
 	return map[string]any{"choices": []any{map[string]any{"message": message}}}

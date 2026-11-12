@@ -126,15 +126,18 @@ its error is fatal.
 
 **cmd/fakemodel**: a fake OpenAI-compatible model for the load experiment (point `LLM_BASE_URL` at it). It serves `POST
 /chat/completions` on `:8090`; every constant is at the top of `main.go`. A session is `rounds` `sleep` tool calls then
-`done`. Messages are system, user, then an assistant and a tool message per round; the session is message 1, the turn
+a final reply. Every reply's text is `{"inference_ms": N}`, the inference time it waited. Messages are system, user,
+then an assistant and a tool message per round; the session is message 1, the turn
 is the rounds so far. Each reply waits a random inference time, drawn from a generator seeded by (seed, FNV-1a hash of
 the prompt, turn), so a session gets the same work in any arrival order and in any process.
 
-**cmd/loadgenerator**: the load generator (`go run ./cmd/loadgenerator`; constants at the top of `main.go`,
-router address from `ROUTER_ADDR`). It creates one agent (model `fake`, tool `sleep`, empty prompt),
-then starts `sessions` sessions at once, one goroutine each, session i with prompt
-`"i"`. Latency is the time from before `POST /sessions` to the `status` frame of its event stream. It writes `output`
-(`session,latency_ms,status`, one row per session in order) and prints the counts and min, median, p99 and max latency.
+**cmd/loadgenerator**: the load generator (`go run ./cmd/loadgenerator -n 1000`; router address from `ROUTER_ADDR`).
+It creates one agent (model `fake`, tool `sleep`, empty prompt),
+then starts `-n` sessions at once (default 200), one goroutine each, session i with prompt
+`"i"`. Overhead is the time from before `POST /sessions` to the `status` frame of its event stream, minus the work the
+session simulated: the inference times read from the reply texts and the `sleep` `ms` from the tool calls, both in the
+event stream. It writes `output`
+(`session,overhead_ms,status`, one row per session in order) and prints the counts and min, median, p99 and max overhead.
 Status is `succeeded` or `failed` as the router reports it, or `error` when a request failed or the stream ended
 without a status frame; the run goes on.
 
