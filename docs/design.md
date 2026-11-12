@@ -123,6 +123,12 @@ them). They run directly in the dispatcher, no Docker.
 **cmd/dispatcher**: listens on `DISPATCHER_ADDR` and serves `dispatch.NewServer` with the tools from `tool.All()`;
 its error is fatal.
 
+**cmd/fakemodel**: a fake OpenAI-compatible model for the load experiment (point `LLM_BASE_URL` at it). It serves `POST
+/chat/completions` on `:8090`; every constant is at the top of `main.go`. A session is `rounds` `sleep` tool calls then
+`done`. Messages are system, user, then an assistant and a tool message per round; the session is message 1, the turn
+is the rounds so far. Each reply waits a random inference time, drawn from a generator seeded by (seed, FNV-1a hash of
+the prompt, turn), so a session gets the same work in any arrival order and in any process.
+
 **cmd/router**: loads the agents and sessions (`agent.Load`, `session.Load`), builds
 `provider.New(LLM_BASE_URL, LLM_API_KEY)`, dials the dispatcher at `DISPATCHER_ADDR` (insecure
 gRPC), calls `Resume` on the `api` server and serves it on `ROUTER_ADDR`; its error is fatal. Both mains read their
