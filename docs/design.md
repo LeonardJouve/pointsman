@@ -131,10 +131,11 @@ then an assistant and a tool message per round; the session is message 1, the tu
 is the rounds so far. Each reply waits a random inference time, drawn from a generator seeded by (seed, FNV-1a hash of
 the prompt, turn), so a session gets the same work in any arrival order and in any process.
 
-**cmd/loadgenerator**: the load generator (`go run ./cmd/loadgenerator -n 1000`; router address from `ROUTER_ADDR`).
+**cmd/loadgenerator**: the load generator (`./loadgenerator -n 1000`, built with `go build ./cmd/loadgenerator`; router address from `ROUTER_ADDR`).
 It creates one agent (model `fake`, tool `sleep`, empty prompt),
-then starts `-n` sessions at once (default 200), one goroutine each, session i with prompt
-`"i"`. Overhead is the time from before `POST /sessions` to the `status` frame of its event stream, minus the work the
+then starts `-n` sessions (default 200), one goroutine each, session i with prompt
+`"i"`. Each starts after a seeded random wait of up to 1 s (`jitter`, `jitterSeed`; the same wait for the same session
+number), not counted in the overhead, so fewer than N sessions overlap during the first second. Overhead is the time from before `POST /sessions` to the `status` frame of its event stream, minus the work the
 session simulated: the inference times read from the reply texts and the `sleep` `ms` from the tool calls, both in the
 event stream. It writes `output`
 (`session,overhead_ms,status`, one row per session in order) and prints the counts and min, median, p99 and max overhead.
@@ -143,6 +144,23 @@ without a status frame; the run goes on.
 With `-single` there is no router: each session is a `./singlesession -prompt i` process (built beforehand, in the
 current folder) whose stdout is read by the same reader, and the `pointsman-*` folders in the temp folder are removed
 at the end.
+
+**scripts/sweep.py**: measures how the overhead grows with the number of sessions
+(`uv run scripts/sweep.py --start 100 --stop 2000 --step 100 --out sweep`; `--single` for the baseline). It runs
+`./loadgenerator` (in the current folder, like `singlesession`) for each N from `--start` to `--stop` (included) in steps of `--step`, reads its `latency.csv`, and every
+0.5 s samples CPU and RSS of the router (singlesession under `--single`), dispatcher and fakemodel, found by process
+name and started by the user, plus system-wide disk and network bytes per second. It writes `sweep.csv` (one row per N:
+failed, error, overhead min, median, p99, max, wall seconds, mean and peak of each metric), `metrics.csv` (the raw
+samples) in `--out`, rewritten
+after each N so a failed run keeps the earlier points (a failed load generator run aborts the sweep). The
+dependencies (psutil) are declared in the script header for `uv run`. The flag names and defaults are not
+yet decided.
+
+**scripts/plot.py**: plots the two sweeps together, router mode and single mode
+(`uv run scripts/plot.py --router sweep/sweep.csv --single sweep-single/sweep.csv --out compare.png`; the flag names are
+not yet decided). One PNG with three panels over the number of sessions, one colour per mode: overhead (median solid,
+p99 dashed, log axis), peak CPU and peak RAM (log axis), each summed over the mode's three services. Disk and network
+are left out: they are system-wide, so they spike from background activity, not from the load.
 
 **cmd/singlesession**: runs one session in its own process, then exits: the baseline for the load experiment
 (`go run ./cmd/singlesession -prompt 17`). The agent is hard-coded (model `fake`, tool `sleep`) and not saved. Same

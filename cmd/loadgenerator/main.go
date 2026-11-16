@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"os/exec"
@@ -26,6 +27,9 @@ import (
 const (
 	output = "latency.csv"
 	binary = "./singlesession"
+
+	jitter     = time.Second // each session starts after a random wait up to this
+	jitterSeed = 42
 )
 
 type result struct {
@@ -75,7 +79,7 @@ func (p process) Close() error {
 }
 
 func main() {
-	sessions := flag.Int("n", 200, "number of sessions started at once")
+	sessions := flag.Int("n", 200, "number of sessions started within the jitter window")
 	single := flag.Bool("single", false, "run each session as a ./singlesession process instead of on the router")
 	flag.Parse()
 
@@ -95,6 +99,8 @@ func main() {
 	start := time.Now()
 	for i := range *sessions {
 		wg.Go(func() {
+			random := rand.New(rand.NewPCG(jitterSeed, uint64(i)))
+			time.Sleep(time.Duration(random.Int64N(int64(jitter) + 1)))
 			results[i] = measure(open, i)
 		})
 	}
