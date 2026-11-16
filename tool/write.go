@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -45,5 +46,5 @@ func write(ctx context.Context, arguments string) (string, uint32) {
 		return fail(err)
 	}
 
-	return "Successfully wrote to " + args.Path, 0
+	return fmt.Sprintf("Successfully wrote to %s", args.Path), 0
 }

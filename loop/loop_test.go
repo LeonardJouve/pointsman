@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,7 +36,7 @@ func (f fakeDispatcher) Call(
 }
 
 func echo(request *dispatch.Request) (*dispatch.Result, error) {
-	return &dispatch.Result{Output: "out" + request.Arguments}, nil
+	return &dispatch.Result{Output: fmt.Sprintf("out%s", request.Arguments)}, nil
 }
 
 // serve returns a client whose model gives the replies in order.

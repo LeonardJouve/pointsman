@@ -60,7 +60,7 @@ func writeLines[T any](id uuid.UUID, flag int, k kind, values ...T) error {
 		lines = append(append(lines, line...), '\n')
 	}
 
-	file, err := os.OpenFile(filepath.Join(dir, id.String()+".jsonl"), flag, 0o600)
+	file, err := os.OpenFile(filepath.Join(dir, fmt.Sprintf("%s.jsonl", id)), flag, 0o600)
 	if err != nil {
 		return err
 	}

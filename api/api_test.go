@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -53,7 +54,7 @@ func TestCreateAndListAgents(t *testing.T) {
 	got := httptest.NewRecorder()
 	handler.ServeHTTP(got, httptest.NewRequest("GET", "/agents", nil))
 
-	want := `{"` + id.ID.String() + `":{"id":"` + id.ID.String() + `",` + request[1:] + `}`
+	want := fmt.Sprintf(`{"%[1]s":{"id":"%[1]s",%[2]s}`, id.ID, request[1:])
 	if strings.TrimSpace(got.Body.String()) != want {
 		t.Errorf("got %s, want %s", got.Body, want)
 	}
@@ -96,7 +97,7 @@ func TestCreateAgentSaves(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := os.Stat(filepath.Join(folder, "pointsman", "agents", id.ID.String()+".json")); err != nil {
+	if _, err := os.Stat(filepath.Join(folder, "pointsman", "agents", fmt.Sprintf("%s.json", id.ID))); err != nil {
 		t.Error(err)
 	}
 }

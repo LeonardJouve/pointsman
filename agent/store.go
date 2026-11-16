@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,8 +58,8 @@ func Save(a *Agent) error {
 		return err
 	}
 
-	file := filepath.Join(dir, a.ID.String()+".json")
-	temp := file + ".tmp"
+	file := filepath.Join(dir, fmt.Sprintf("%s.json", a.ID))
+	temp := fmt.Sprintf("%s.tmp", file)
 
 	if err := os.WriteFile(temp, content, 0o600); err != nil {
 		return err

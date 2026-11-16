@@ -103,10 +103,21 @@ caller appends the user message first and reads the answer from the last message
   message `output + "\nCommand exited with code N"`; code 0 leaves
   the output as is.
 
-**tools `read` and `write`** (constructors `tool.Read()` and `tool.Write()`, returning the schema-generation error;
-`tool.All()` returns every built-in tool, the one list, and the first constructor error):
+**tools `read`, `write`, `subagent` and `bash`** (constructors `tool.Read()`, `tool.Write()`,
+`tool.Subagent()` and `tool.Bash()`, returning the schema-generation error; `tool.All()` returns every built-in tool, the one list,
+and the first constructor error):
 copies of pi's, same names, parameters, descriptions and limits (2000 lines or 50KB, from the constants that enforce
 them). They run directly in the dispatcher, no Docker.
+- `subagent` is not from pi: parameters `agent` (an agent id) and `prompt`. `Run` reads `ROUTER_ADDR` (not at
+  construction: the router builds the schema without it; unset is a code 1 failure), POSTs `/sessions`, reads
+  `GET /sessions/{id}/events` until the `status` frame and returns the `content` of the last `message` frame, code 0.
+  A `failed` child, a bad request, a non-201 reply (with the API's `error`) or a cancelled `ctx` is code 1. A
+  cancelled `ctx` ends the wait, not the child. No parent link, no recursion guard.
+- `bash` is pi's: parameters `command` and `timeout` (seconds, 0 or absent: none). It runs `bash -c` directly in the
+  dispatcher, in its working directory, stdout and stderr in one buffer. The tail is kept at the read limits; when it cuts,
+  the full output goes to a `bash-*.log` temp file named in pi's note. A timeout or a cancelled `ctx` stops the shell only,
+  not its children, and adds `Command timed out after N seconds` or `Command aborted`, code 1. The exit code is returned
+  as `code`; the loop adds the exit line. `bash` not found is code 1.
 - The parameters schema is generated from the argument struct (`jsonschema.For`, descriptions in `jsonschema` tags,
   optional fields `omitzero`), so the struct is the one source of truth. The generated schema differs from pi's:
   `offset` and `limit` are integers and `additionalProperties` is false. A `limit` of 0 or absent means no limit (pi
@@ -280,6 +291,8 @@ Deferred):
   reading only.
 - **Workspace storage.** Who owns it (the dispatcher, from the `session_id`?) and when is it deleted (with the
   session?).
+- **`bash` output and children.** The whole output is held in memory, and a command's children can outlive a timeout;
+  both go with the Docker tool.
 - **`developer` or `system` role.** Some OpenAI-compatible servers reject `developer`; `provider` has only `System`.
 
 ## Deferred

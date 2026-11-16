@@ -3,11 +3,11 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -15,7 +15,7 @@ import (
 func numbered(count int) string {
 	lines := make([]string, count)
 	for i := range lines {
-		lines[i] = "line " + strconv.Itoa(i+1)
+		lines[i] = fmt.Sprintf("line %d", i+1)
 	}
 
 	return strings.Join(lines, "\n")
@@ -43,7 +43,7 @@ func TestWrite(t *testing.T) {
 	for _, content := range []string{"first", "second"} {
 		input := arguments(t, map[string]any{"path": path, "content": content})
 		output, code := writeTool.Run(context.Background(), input)
-		if code != 0 || output != "Successfully wrote to "+path {
+		if code != 0 || output != fmt.Sprintf("Successfully wrote to %s", path) {
 			t.Fatalf("got %q, %d", output, code)
 		}
 
@@ -83,8 +83,8 @@ func TestRead(t *testing.T) {
 
 	small := write("small", numbered(10))
 	long := write("long", numbered(2500))
-	wide := write("wide", strings.Repeat(strings.Repeat("x", 99)+"\n", 600))
-	huge := write("huge", strings.Repeat("x", 60*1024)+"\nnext")
+	wide := write("wide", strings.Repeat(fmt.Sprintf("%s\n", strings.Repeat("x", 99)), 600))
+	huge := write("huge", fmt.Sprintf("%s\nnext", strings.Repeat("x", 60*1024)))
 
 	tests := []struct {
 		name      string
@@ -116,14 +116,16 @@ func TestRead(t *testing.T) {
 		{
 			"line cap",
 			map[string]any{"path": long},
-			numbered(2000) + "\n\n[Showing lines 1-2000 of 2500. Use offset=2001 to continue.]",
+			fmt.Sprintf("%s\n\n[Showing lines 1-2000 of 2500. Use offset=2001 to continue.]", numbered(2000)),
 			0,
 		},
 		{
 			"byte cap",
 			map[string]any{"path": wide},
-			strings.TrimSuffix(strings.Repeat(strings.Repeat("x", 99)+"\n", 512), "\n") +
-				"\n\n[Showing lines 1-512 of 601. Use offset=513 to continue.]",
+			fmt.Sprintf(
+				"%s\n\n[Showing lines 1-512 of 601. Use offset=513 to continue.]",
+				strings.TrimSuffix(strings.Repeat(fmt.Sprintf("%s\n", strings.Repeat("x", 99)), 512), "\n"),
+			),
 			0,
 		},
 		{"first line over byte cap", map[string]any{"path": huge}, "[Line 1, exceeds 50.0KB limit.]", 0},
@@ -153,6 +155,8 @@ func TestSchema(t *testing.T) {
 	}{
 		{"read", Read, []string{"limit", "offset", "path"}, []string{"path"}},
 		{"write", Write, []string{"content", "path"}, []string{"content", "path"}},
+		{"subagent", Subagent, []string{"agent", "prompt"}, []string{"agent", "prompt"}},
+		{"bash", Bash, []string{"command", "timeout"}, []string{"command"}},
 	}
 
 	for _, test := range tests {

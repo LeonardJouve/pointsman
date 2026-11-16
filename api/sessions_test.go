@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -52,7 +53,7 @@ func start(t *testing.T, handler http.Handler) string {
 		t.Fatalf("got %d %s", created.Code, created.Body)
 	}
 
-	return "/sessions/" + session.ID.String()
+	return fmt.Sprintf("/sessions/%s", session.ID)
 }
 
 // finished polls the session until it is no longer running.
@@ -116,7 +117,7 @@ func TestGetUnknownSession(t *testing.T) {
 	handler := newHandler(t, nil)
 
 	for _, id := range []string{"nope", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"} {
-		if code := send(handler, "GET", "/sessions/"+id, "").Code; code != http.StatusNotFound {
+		if code := send(handler, "GET", fmt.Sprintf("/sessions/%s", id), "").Code; code != http.StatusNotFound {
 			t.Errorf("%s: got %d", id, code)
 		}
 	}
@@ -125,7 +126,7 @@ func TestGetUnknownSession(t *testing.T) {
 // events reads a stream request to its end and returns the body.
 func events(handler http.Handler, path string) (code int, body string) {
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest("GET", path+"/events", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest("GET", fmt.Sprintf("%s/events", path), nil))
 
 	return recorder.Code, recorder.Body.String()
 }
@@ -176,7 +177,7 @@ func TestStreamUnknownSession(t *testing.T) {
 	handler := newHandler(t, nil)
 
 	for _, id := range []string{"nope", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"} {
-		if code, _ := events(handler, "/sessions/"+id); code != http.StatusNotFound {
+		if code, _ := events(handler, fmt.Sprintf("/sessions/%s", id)); code != http.StatusNotFound {
 			t.Errorf("%s: got %d", id, code)
 		}
 	}
@@ -198,7 +199,7 @@ func TestStreamResume(t *testing.T) {
 		"-1":                  first + second + status,
 		"9223372036854775807": first + second + status,
 	} {
-		request := httptest.NewRequest("GET", path+"/events", nil)
+		request := httptest.NewRequest("GET", fmt.Sprintf("%s/events", path), nil)
 		request.Header.Set("Last-Event-ID", last)
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, request)

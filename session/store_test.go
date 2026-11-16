@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,7 +24,7 @@ func lines(t *testing.T, s *Session) []string {
 		t.Fatal(err)
 	}
 
-	content, err := os.ReadFile(filepath.Join(dir, s.ID.String()+".jsonl"))
+	content, err := os.ReadFile(filepath.Join(dir, fmt.Sprintf("%s.jsonl", s.ID)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func TestFile(t *testing.T) {
 	}
 
 	want := []string{
-		`{"header":{"created":"` + s.Created.Format(time.RFC3339Nano) + `","agent":"` + a.ID.String() + `"}}`,
+		fmt.Sprintf(`{"header":{"created":"%s","agent":"%s"}}`, s.Created.Format(time.RFC3339Nano), a.ID),
 		`{"message":{"content":"hi","role":"user"}}`,
 		`{"status":"succeeded"}`,
 	}
@@ -114,7 +115,7 @@ func TestAppendRoundFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path := filepath.Join(dir, s.ID.String()+".jsonl")
+	path := filepath.Join(dir, fmt.Sprintf("%s.jsonl", s.ID))
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
@@ -226,14 +227,14 @@ func TestLoadEmpty(t *testing.T) {
 
 func TestLoadFails(t *testing.T) {
 	known := uuid.New()
-	header := `{"header":{"created":"2026-01-02T03:04:05Z","agent":"` + known.String() + `"}}`
+	header := fmt.Sprintf(`{"header":{"created":"2026-01-02T03:04:05Z","agent":"%s"}}`, known)
 	agents := agent.Agents{known: {ID: known}}
 
 	for name, content := range map[string]string{
-		"not a header":  `{"status":"failed"}` + "\n",
-		"bad json":      header + "\n{\n",
-		"unknown kind":  header + "\n" + `{"note":"x"}` + "\n",
-		"unknown agent": `{"header":{"created":"2026-01-02T03:04:05Z","agent":"` + uuid.New().String() + `"}}` + "\n",
+		"not a header":  "{\"status\":\"failed\"}\n",
+		"bad json":      fmt.Sprintf("%s\n{\n", header),
+		"unknown kind":  fmt.Sprintf("%s\n{\"note\":\"x\"}\n", header),
+		"unknown agent": fmt.Sprintf("{\"header\":{\"created\":\"2026-01-02T03:04:05Z\",\"agent\":\"%s\"}}\n", uuid.New()),
 	} {
 		isolate(t)
 
@@ -242,7 +243,7 @@ func TestLoadFails(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		file := filepath.Join(dir, uuid.New().String()+".jsonl")
+		file := filepath.Join(dir, fmt.Sprintf("%s.jsonl", uuid.New()))
 		if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
