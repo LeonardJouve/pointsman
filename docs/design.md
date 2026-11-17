@@ -224,8 +224,9 @@ loaded by `session.Load` at startup and each new one also written to its file) b
 ## Next
 
 Dispatch. The router sends each tool call over gRPC to a dispatcher, a separate process that holds the tool
-instances. A tool is a function there: it may start a Docker container (one per call, the session's workspace
-mounted) or run directly. The router never runs tool logic (SPEC §1, D2). The contract:
+instances. A tool is a function there; `read`, `write` and `bash` will each start one Docker container per call, with
+the workspace mounted (item 4); `subagent` runs directly. The router never runs tool logic (SPEC §1, D2). The
+contract below is the built one; the workspace changes it (Open). The contract:
 ```proto
 service Dispatcher {
   rpc Call(Request) returns (Result);
@@ -256,10 +257,19 @@ Layout: one Go module. The two apps are `cmd/router` and `cmd/dispatcher`; the l
 
 Plan, bottom-up; one piece is one change, and each lists the decisions it needs (pieces 1-3, 5 and 6.1-6.2, tools, the
 server, `cmd/dispatcher`, `cmd/router`, `loop` and `api` agents and sessions, are built):
-4. **A Docker tool** (deferred). A function that runs `docker run --rm` through `os/exec`, the session's workspace
-   mounted, arguments on stdin, exit code as `code`. Needs: workspace storage (Open), the image, the network
-   policy, how Docker's own failures (exit 125-127) are reported: a non-zero code with the message, or a way for
+4. **Workspaces and the Docker tools** (deferred). Docker is the sandbox (not a WSL distro). The workspace is one
+   Docker volume, mounted at `/work` in every container: one filesystem view for `read`, `write` and `bash`, and no
+   host paths (a live run failed because the model used WSL paths `/mnt/c/...`, which `resolve()` on Windows treated
+   as relative, so `write` and `bash` saw different filesystems). Paths are relative to `/work`.
+   - A workspace is a new resource the router manages and delegates to the dispatcher (the router never runs tool
+     logic, D2). A session can start with a workspace.
+   - One container per call (`docker run --rm` through `os/exec`), for `read`, `write` and `bash` alike. The image has
+     no Go toolchain: `read` and `write` use system binaries from the image, `bash` runs the model's command. The
+     exit code is returned as `code`.
+   Needs, all in Open: the API and RPC names, how the workspace reaches `Run`, the image, the network policy, the
+   limits, how Docker's own failures (exit 125-127) are reported: a non-zero code with the message, or a way for
    `Run` to report them.
+   Built so far: the `workspace` package (`Create` and `Remove` a volume through the Docker CLI); nothing calls it yet.
 5. **The session loop.** Built (`loop`, above).
 6. **The router API**, in three changes (HTTP, `cmd/router`):
    1. Agents. Built (`api`, above).
@@ -289,8 +299,23 @@ Deferred):
   nil there; `loop` covers the tool round.
 - **`-race` is unavailable** on the development machine (no cgo): the locks in `session` and `api` are checked by
   reading only.
-- **Workspace storage.** Who owns it (the dispatcher, from the `session_id`?) and when is it deleted (with the
-  session?).
+- **Workspaces (item 4), proposed and not decided.** Recommendations are marked.
+  - Dispatcher operations: two RPCs, `CreateWorkspace` and `DeleteWorkspace` (recommended), or a volume created lazily
+    on first use.
+  - The `Request` carries the workspace id in a new field, since the dispatcher knows nothing about sessions (the
+    `session_id` comment above then no longer holds). How a tool's `Run` receives it is open: it changes the shared
+    `Run` signature.
+  - API names, the user's call: `POST /workspaces`, `DELETE /workspaces/{id}`, an optional `workspace` on
+    `POST /sessions`.
+  - A session whose agent has `read`, `write` or `bash` and no workspace: `400` at creation (recommended).
+  - One workspace shared by several sessions (a subagent on its parent's files): allowed, no guard (recommended).
+  - Delete while a session uses the workspace: `409` (recommended).
+  - Where the list lives: Docker is the source of truth (`docker volume ls` with a label filter, recommended), or a
+    file in `store/`.
+  - `read` keeps its truncation in the dispatcher's Go code, windowing and formatting the output of `cat`
+    (recommended), or moves it into the image.
+  - The image (bash and coreutils, Alpine proposed), the network policy (`--network none` proposed), memory and cpu
+    limits, and how Docker's own failures are reported: open.
 - **`bash` output and children.** The whole output is held in memory, and a command's children can outlive a timeout;
   both go with the Docker tool.
 - **`developer` or `system` role.** Some OpenAI-compatible servers reject `developer`; `provider` has only `System`.

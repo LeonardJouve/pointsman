@@ -32,9 +32,7 @@ func Bash() (Tool, error) {
 
 	description := fmt.Sprintf(`Execute a bash command in the current working directory. Returns stdout and stderr.
 Output is truncated to last %d lines or %dKB (whichever is hit first).
-If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
-		maxLines, maxBytes/1024,
-	)
+If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`, maxLines, maxBytes/1024)
 
 	return Tool{
 		Schema: New("bash", description, schema),
