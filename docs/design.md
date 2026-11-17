@@ -116,11 +116,14 @@ them). They run directly in the dispatcher, no Docker.
   `GET /sessions/{id}/events` until the `status` frame and returns the `content` of the last `message` frame, code 0.
   A `failed` child, a bad request, a non-201 reply (with the API's `error`) or a cancelled `ctx` is code 1. A
   cancelled `ctx` ends the wait, not the child. No parent link, no recursion guard.
-- `bash` is pi's: parameters `command` and `timeout` (seconds, 0 or absent: none). It runs `bash -c` directly in the
-  dispatcher, in its working directory, stdout and stderr in one buffer. The tail is kept at the read limits; when it cuts,
-  the full output goes to a `bash-*.log` temp file named in pi's note. A timeout or a cancelled `ctx` stops the shell only,
-  not its children, and adds `Command timed out after N seconds` or `Command aborted`, code 1. The exit code is returned
-  as `code`; the loop adds the exit line. `bash` not found is code 1.
+- `bash` is pi's: parameters `command` and `timeout` (seconds, 0 or absent: none). It runs `sandbox.Run` with
+  `bash -c <command>`, wrapped as `timeout <n> bash -c <command>` (coreutils, inside the container) when a timeout is
+  set; stdout and stderr in one buffer. The tail is kept at the read limits; when it cuts, the full output goes to a
+  new `bash-*.log` file in the workspace folder (`/work/bash-*.log` for the model), named relative to `/work` in pi's
+  note and never removed. Exit 124 with a timeout set adds `Command timed out after N seconds`, code 1 (a command's own
+  124 is taken for it). A cancelled `ctx` adds `Command aborted`, code 1: the docker client is killed, the container
+  keeps running until its command ends. Any other exit code is returned as `code`; the loop adds the exit line. A
+  Docker failure is code 1 with its message.
 - The parameters schema is generated from the argument struct (`jsonschema.For`, descriptions in `jsonschema` tags,
   optional fields `omitzero`), so the struct is the one source of truth. The generated schema differs from pi's:
   `offset` and `limit` are integers and `additionalProperties` is false. A `limit` of 0 or absent means no limit (pi
@@ -282,8 +285,9 @@ server, `cmd/dispatcher`, `cmd/router`, `loop` and `api` agents and sessions, ar
      file for all workspaces, outside every mount. The dispatcher loads it at startup into a map by id. A bad line
      fails the startup with its line number. There is no delete: a workspace stays on disk until the folder is
      removed by hand.
-   - `sandbox.Run(ctx, w, command...) (output, code, err)` starts one container per call: `docker run --rm
-     -v <w.Path()>:/work -w /work <w.Image> <command...>`, for `read`, `write` and `bash` alike. `code` is the
+   - `sandbox.Run(ctx, w, command...) (output, code, err)` starts one container per call: `docker run -q --rm
+     -v <w.Path()>:/work -w /work <w.Image> <command...>`, for `read`, `write` and `bash` alike (`-q`: image pull
+     progress is not part of the output). `code` is the
      container's exit code; `err` is only for Docker's own failures. The image has bash and coreutils; the dispatcher's
      caller supplies it.
    - Network: Docker's default bridge, so `pip install` works. Known cost: the model's commands can reach the internet
@@ -292,8 +296,8 @@ server, `cmd/dispatcher`, `cmd/router`, `loop` and `api` agents and sessions, ar
    Needs, all in Open: the API names, the loop sending the id, the tools on `sandbox`.
    Built so far: `store.Workspaces()`, the `workspace` package (`Workspace`, `Load`, `Create`, `Get`; the map is
    behind a mutex), `sandbox.Run`, and the dispatcher side: `CreateWorkspace`, `workspace_id` on `Request`, the
-   workspace passed to every tool's `Run`. No tool uses `sandbox` yet, and the loop sends no `workspace_id`, so live
-   calls are refused until it does. A cancelled `ctx` kills the `docker run` client and
+   workspace passed to every tool's `Run`. `bash` runs on `sandbox`; `read` and `write` do not yet, and the loop
+   sends no `workspace_id`, so live calls are refused until it does. A cancelled `ctx` kills the `docker run` client and
    `Run` returns `ctx.Err()`; the container is not stopped and keeps running until its command ends (a fix needs
    `--name` and `docker rm -f`). A command that itself exits 125 is taken for a Docker failure.
 5. **The session loop.** Built (`loop`, above).
@@ -331,10 +335,9 @@ Deferred):
   - One workspace shared by several sessions (a subagent on its parent's files): allowed, no guard (recommended).
   - `read` keeps its truncation in the dispatcher's Go code, windowing and formatting the output of `cat`
     (recommended), or moves it into the image.
-  - Moving `read`, `write` and `bash` onto `sandbox`, and the loop sending the workspace id.
+  - Moving `read` and `write` onto `sandbox` (`bash` is done), and the loop sending the workspace id.
   - `session_id` stays on `Request` though nothing reads it.
-- **`bash` output and children.** The whole output is held in memory, and a command's children can outlive a timeout;
-  both go with the Docker tool.
+- **`bash` output.** The whole output is held in memory.
 - **`developer` or `system` role.** Some OpenAI-compatible servers reject `developer`; `provider` has only `System`.
 
 ## Deferred

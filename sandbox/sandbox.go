@@ -24,7 +24,7 @@ func Run(ctx context.Context, w workspace.Workspace, command ...string) (string,
 		return "", 0, err
 	}
 
-	args := append([]string{"run", "--rm", "-v", fmt.Sprintf("%s:/work", path), "-w", "/work", w.Image}, command...)
+	args := append([]string{"run", "-q", "--rm", "-v", fmt.Sprintf("%s:/work", path), "-w", "/work", w.Image}, command...)
 
 	var output bytes.Buffer
 
