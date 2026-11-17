@@ -6,16 +6,26 @@ option go_package = "github.com/LeonardJouve/pointsman/dispatch";
 
 service Dispatcher {
   rpc Call(Request) returns (Result);
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (CreateWorkspaceResult);
 }
 
 message Request {
-  string session_id = 1; // the dispatcher finds the session's workspace from it
-  string call_id    = 2; // also the idempotency key
-  string name       = 3; // the tool
-  string arguments  = 4; // the model's JSON, passed through
+  string session_id   = 1; // the session
+  string call_id      = 2; // also the idempotency key
+  string name         = 3; // the tool
+  string arguments    = 4; // the model's JSON, passed through
+  string workspace_id = 5; // the workspace the tool runs in
 }
 
 message Result {
   string output = 1;
   uint32 code   = 2;
+}
+
+message CreateWorkspaceRequest {
+  string image = 1;
+}
+
+message CreateWorkspaceResult {
+  string id = 1;
 }

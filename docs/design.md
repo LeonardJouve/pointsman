@@ -43,17 +43,20 @@ folders; all create the folder.
 - `provider.Tools` converts schemas to the wire format (the SDK's map) and returns the conversion error, which
   `Context` passes on. It is a plain function.
 - `Tool{Schema, Run}` pairs a schema with its function,
-  `Run func(ctx, arguments string) (output string, code uint32)`: `arguments` is the model's JSON, parsed by the
-  tool; a tool failure is a non-zero `code` with the message as `output`. A tool has no error path: errors are the
-  dispatcher's own (an unknown tool). The router imports a tool for its schema (`provider`
+  `Run func(ctx, w workspace.Workspace, arguments string) (output string, code uint32)`: `arguments` is the
+  model's JSON, parsed by the tool; a tool failure is a non-zero `code` with the message as `output`. A tool has no error path: errors are the
+  dispatcher's own (an unknown tool or workspace). The router imports a tool for its schema (`provider`
   resolves names with it), the dispatcher for its function. One module builds both apps from one commit, so the two
-  cannot drift; a `List` RPC would replace the import only if tools must be deployed without the router. The
-  workspace parameter comes with the Docker tool, and so does where tool instances live.
+  cannot drift; a `List` RPC would replace the import only if tools must be deployed without the router. Every tool
+  takes the workspace; none uses it yet. Where tool instances live comes with the Docker tool.
 
-**dispatch**: the gRPC contract (below) and `NewServer(tools []tool.Tool)`, which implements `Dispatcher.Call`: it
-looks the tool up by `Schema.Name` (a name is written once), runs it and returns the `Result`. An unknown tool is a
-plain Go error: it reaches the router as gRPC `Unknown`. The loop writes a non-zero code into the tool message. Tests
-call `Call` directly, without a gRPC server.
+**dispatch**: the gRPC contract (below) and `NewServer(tools []tool.Tool, workspaces *workspace.Workspaces)`, which
+implements the `Dispatcher` service. `Call` looks the tool up by `Schema.Name` (a name is written once) and the
+workspace by `workspace_id`, runs the tool in it and returns the `Result`. Every call needs a known workspace: an
+unknown tool, and an empty or unknown workspace id, are plain Go errors that reach the router as gRPC `Unknown`; a
+tool never receives a zero `Workspace`. `CreateWorkspace` calls `Workspaces.Create` and returns the id; its error
+(empty image, disk) is returned as is. The loop writes a non-zero code into the tool message. Tests call the methods
+directly, without a gRPC server.
 
 **session**: `Session{ID, Agent, Created}` (`Agent` is a `*agent.Agent`) and an unexported log.
 `session.New(a)` returns a `*Session` and an error, with a random ID (stdlib `uuid.New()`; V7 if sorting by creation is
@@ -129,8 +132,8 @@ them). They run directly in the dispatcher, no Docker.
 - Paths: relative ones start at `root` (`"."`, in `tool/tool.go`); absolute paths and `..` are not rejected, as in
   pi. Confinement and the root come with workspaces.
 
-**cmd/dispatcher**: listens on `DISPATCHER_ADDR` and serves `dispatch.NewServer` with the tools from `tool.All()`;
-its error is fatal.
+**cmd/dispatcher**: listens on `DISPATCHER_ADDR` and serves `dispatch.NewServer` with the tools from `tool.All()` and
+the workspaces from `workspace.Load()`; their errors are fatal.
 
 **cmd/router**: loads the agents and sessions (`agent.Load`, `session.Load`), builds
 `provider.New(LLM_BASE_URL, LLM_API_KEY)`, dials the dispatcher at `DISPATCHER_ADDR` (insecure
@@ -226,26 +229,36 @@ loaded by `session.Load` at startup and each new one also written to its file) b
 Dispatch. The router sends each tool call over gRPC to a dispatcher, a separate process that holds the tool
 instances. A tool is a function there; `read`, `write` and `bash` will each start one Docker container per call, with
 its workspace mounted (item 4); `subagent` runs directly. The router never runs tool logic (SPEC §1, D2). The
-contract below is the built one; the workspace changes it (Open). The contract:
+contract below is the built one. The contract:
 ```proto
 service Dispatcher {
   rpc Call(Request) returns (Result);
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (CreateWorkspaceResult);
 }
 
 message Request {
-  string session_id = 1; // the dispatcher finds the session's workspace from it
-  string call_id    = 2; // also the idempotency key (D23)
-  string name       = 3; // the tool
-  string arguments  = 4; // the model's JSON, passed through
+  string session_id   = 1; // the session
+  string call_id      = 2; // also the idempotency key (D23)
+  string name         = 3; // the tool
+  string arguments    = 4; // the model's JSON, passed through
+  string workspace_id = 5; // the workspace the tool runs in
 }
 
 message Result {
   string output = 1;
   uint32 code   = 2; // 0 = success; a Docker tool returns the container's exit code
 }
+
+message CreateWorkspaceRequest {
+  string image = 1; // required
+}
+
+message CreateWorkspaceResult {
+  string id = 1;
+}
 ```
 A tool error is a `Result` with `code != 0`, sent to the model. A dispatcher error (dispatcher down, unknown
-tool) is a gRPC status error, handled by the router (D24). The model sees only text, so the router
+tool, empty or unknown workspace) is a gRPC status error, handled by the router (D24). The model sees only text, so the router
 writes a non-zero code into the tool message; how comes with the loop. Large outputs (D25), streaming output and tool
 listing are left out until their piece. MCP was weighed and set aside: its gains (tool discovery, reuse of existing
 servers) do not apply, and it is a large dependency with its own session state.
@@ -276,9 +289,11 @@ server, `cmd/dispatcher`, `cmd/router`, `loop` and `api` agents and sessions, ar
    - Network: Docker's default bridge, so `pip install` works. Known cost: the model's commands can reach the internet
      and the host's network, and can send the workspace out. No memory, cpu or process limits for now: a runaway
      command can load the host.
-   Needs, all in Open: the API and RPC names, how the workspace reaches a tool's `Run`.
+   Needs, all in Open: the API names, the loop sending the id, the tools on `sandbox`.
    Built so far: `store.Workspaces()`, the `workspace` package (`Workspace`, `Load`, `Create`, `Get`; the map is
-   behind a mutex) and `sandbox.Run`. Nothing calls them yet. A cancelled `ctx` kills the `docker run` client and
+   behind a mutex), `sandbox.Run`, and the dispatcher side: `CreateWorkspace`, `workspace_id` on `Request`, the
+   workspace passed to every tool's `Run`. No tool uses `sandbox` yet, and the loop sends no `workspace_id`, so live
+   calls are refused until it does. A cancelled `ctx` kills the `docker run` client and
    `Run` returns `ctx.Err()`; the container is not stopped and keeps running until its command ends (a fix needs
    `--name` and `docker rm -f`). A command that itself exits 125 is taken for a Docker failure.
 5. **The session loop.** Built (`loop`, above).
@@ -311,14 +326,13 @@ Deferred):
 - **`-race` is unavailable** on the development machine (no cgo): the locks in `session` and `api` are checked by
   reading only.
 - **Workspaces (item 4), left to decide.** Recommendations are marked.
-  - The dispatcher gets `CreateWorkspace` (the service in Dispatch gets a second RPC). The `Request` carries the
-    workspace id in a new field, since the dispatcher knows nothing about sessions (the `session_id` comment above
-    then no longer holds). How a tool's `Run` receives the workspace is open: it changes the shared `Run` signature.
   - API names, the user's call: `POST /workspaces`, an optional `workspace` on `POST /sessions`.
   - A session whose agent has `read`, `write` or `bash` and no workspace: `400` at creation (recommended).
   - One workspace shared by several sessions (a subagent on its parent's files): allowed, no guard (recommended).
   - `read` keeps its truncation in the dispatcher's Go code, windowing and formatting the output of `cat`
     (recommended), or moves it into the image.
+  - Moving `read`, `write` and `bash` onto `sandbox`, and the loop sending the workspace id.
+  - `session_id` stays on `Request` though nothing reads it.
 - **`bash` output and children.** The whole output is held in memory, and a command's children can outlive a timeout;
   both go with the Docker tool.
 - **`developer` or `system` role.** Some OpenAI-compatible servers reject `developer`; `provider` has only `System`.

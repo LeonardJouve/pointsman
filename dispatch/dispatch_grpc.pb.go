@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Dispatcher_Call_FullMethodName = "/dispatch.Dispatcher/Call"
+	Dispatcher_Call_FullMethodName            = "/dispatch.Dispatcher/Call"
+	Dispatcher_CreateWorkspace_FullMethodName = "/dispatch.Dispatcher/CreateWorkspace"
 )
 
 // DispatcherClient is the client API for Dispatcher service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DispatcherClient interface {
 	Call(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Result, error)
+	CreateWorkspace(ctx context.Context, in *CreateWorkspaceRequest, opts ...grpc.CallOption) (*CreateWorkspaceResult, error)
 }
 
 type dispatcherClient struct {
@@ -47,11 +49,22 @@ func (c *dispatcherClient) Call(ctx context.Context, in *Request, opts ...grpc.C
 	return out, nil
 }
 
+func (c *dispatcherClient) CreateWorkspace(ctx context.Context, in *CreateWorkspaceRequest, opts ...grpc.CallOption) (*CreateWorkspaceResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateWorkspaceResult)
+	err := c.cc.Invoke(ctx, Dispatcher_CreateWorkspace_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DispatcherServer is the server API for Dispatcher service.
 // All implementations must embed UnimplementedDispatcherServer
 // for forward compatibility.
 type DispatcherServer interface {
 	Call(context.Context, *Request) (*Result, error)
+	CreateWorkspace(context.Context, *CreateWorkspaceRequest) (*CreateWorkspaceResult, error)
 	mustEmbedUnimplementedDispatcherServer()
 }
 
@@ -64,6 +77,9 @@ type UnimplementedDispatcherServer struct{}
 
 func (UnimplementedDispatcherServer) Call(context.Context, *Request) (*Result, error) {
 	return nil, status.Error(codes.Unimplemented, "method Call not implemented")
+}
+func (UnimplementedDispatcherServer) CreateWorkspace(context.Context, *CreateWorkspaceRequest) (*CreateWorkspaceResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateWorkspace not implemented")
 }
 func (UnimplementedDispatcherServer) mustEmbedUnimplementedDispatcherServer() {}
 func (UnimplementedDispatcherServer) testEmbeddedByValue()                    {}
@@ -104,6 +120,24 @@ func _Dispatcher_Call_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Dispatcher_CreateWorkspace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateWorkspaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DispatcherServer).CreateWorkspace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Dispatcher_CreateWorkspace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DispatcherServer).CreateWorkspace(ctx, req.(*CreateWorkspaceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Dispatcher_ServiceDesc is the grpc.ServiceDesc for Dispatcher service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -114,6 +148,10 @@ var Dispatcher_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Call",
 			Handler:    _Dispatcher_Call_Handler,
+		},
+		{
+			MethodName: "CreateWorkspace",
+			Handler:    _Dispatcher_CreateWorkspace_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

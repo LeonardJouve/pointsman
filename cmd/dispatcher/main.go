@@ -9,6 +9,7 @@ import (
 	"github.com/LeonardJouve/pointsman/dispatch"
 	"github.com/LeonardJouve/pointsman/env"
 	"github.com/LeonardJouve/pointsman/tool"
+	"github.com/LeonardJouve/pointsman/workspace"
 )
 
 func main() {
@@ -33,8 +34,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	workspaces, err := workspace.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	s := grpc.NewServer()
-	dispatch.RegisterDispatcherServer(s, dispatch.NewServer(tools))
+	dispatch.RegisterDispatcherServer(s, dispatch.NewServer(tools, workspaces))
 
 	log.Fatal(s.Serve(listener))
 }

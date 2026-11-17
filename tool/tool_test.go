@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/LeonardJouve/pointsman/workspace"
 )
 
 func numbered(count int) string {
@@ -42,7 +44,7 @@ func TestWrite(t *testing.T) {
 
 	for _, content := range []string{"first", "second"} {
 		input := arguments(t, map[string]any{"path": path, "content": content})
-		output, code := writeTool.Run(context.Background(), input)
+		output, code := writeTool.Run(context.Background(), workspace.Workspace{}, input)
 		if code != 0 || output != fmt.Sprintf("Successfully wrote to %s", path) {
 			t.Fatalf("got %q, %d", output, code)
 		}
@@ -60,7 +62,7 @@ func TestWriteBadArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, code := writeTool.Run(context.Background(), "{"); code != 1 {
+	if _, code := writeTool.Run(context.Background(), workspace.Workspace{}, "{"); code != 1 {
 		t.Errorf("got code %d, want code 1", code)
 	}
 }
@@ -134,7 +136,7 @@ func TestRead(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			output, code := readTool.Run(context.Background(), arguments(t, test.arguments))
+			output, code := readTool.Run(context.Background(), workspace.Workspace{}, arguments(t, test.arguments))
 			if code != test.code {
 				t.Fatalf("got code %d, want code %d", code, test.code)
 			}

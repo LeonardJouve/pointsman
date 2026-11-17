@@ -23,10 +23,11 @@ const (
 
 type Request struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // the dispatcher finds the session's workspace from it
-	CallId        string                 `protobuf:"bytes,2,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`          // also the idempotency key (D23)
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`                            // the tool
-	Arguments     string                 `protobuf:"bytes,4,opt,name=arguments,proto3" json:"arguments,omitempty"`                  // the model's JSON, passed through
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`       // the session
+	CallId        string                 `protobuf:"bytes,2,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`                // also the idempotency key
+	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`                                  // the tool
+	Arguments     string                 `protobuf:"bytes,4,opt,name=arguments,proto3" json:"arguments,omitempty"`                        // the model's JSON, passed through
+	WorkspaceId   string                 `protobuf:"bytes,5,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"` // the workspace the tool runs in
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -89,10 +90,17 @@ func (x *Request) GetArguments() string {
 	return ""
 }
 
+func (x *Request) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
 type Result struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Output        string                 `protobuf:"bytes,1,opt,name=output,proto3" json:"output,omitempty"`
-	Code          uint32                 `protobuf:"varint,2,opt,name=code,proto3" json:"code,omitempty"` // 0 = success; a Docker tool returns the container's exit code
+	Code          uint32                 `protobuf:"varint,2,opt,name=code,proto3" json:"code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -141,23 +149,117 @@ func (x *Result) GetCode() uint32 {
 	return 0
 }
 
+type CreateWorkspaceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Image         string                 `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"` // required
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateWorkspaceRequest) Reset() {
+	*x = CreateWorkspaceRequest{}
+	mi := &file_dispatch_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateWorkspaceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateWorkspaceRequest) ProtoMessage() {}
+
+func (x *CreateWorkspaceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dispatch_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateWorkspaceRequest.ProtoReflect.Descriptor instead.
+func (*CreateWorkspaceRequest) Descriptor() ([]byte, []int) {
+	return file_dispatch_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *CreateWorkspaceRequest) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
+}
+
+type CreateWorkspaceResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateWorkspaceResult) Reset() {
+	*x = CreateWorkspaceResult{}
+	mi := &file_dispatch_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateWorkspaceResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateWorkspaceResult) ProtoMessage() {}
+
+func (x *CreateWorkspaceResult) ProtoReflect() protoreflect.Message {
+	mi := &file_dispatch_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateWorkspaceResult.ProtoReflect.Descriptor instead.
+func (*CreateWorkspaceResult) Descriptor() ([]byte, []int) {
+	return file_dispatch_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *CreateWorkspaceResult) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
 var File_dispatch_proto protoreflect.FileDescriptor
 
 const file_dispatch_proto_rawDesc = "" +
 	"\n" +
-	"\x0edispatch.proto\x12\bdispatch\"s\n" +
+	"\x0edispatch.proto\x12\bdispatch\"\x96\x01\n" +
 	"\aRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x17\n" +
 	"\acall_id\x18\x02 \x01(\tR\x06callId\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x1c\n" +
-	"\targuments\x18\x04 \x01(\tR\targuments\"4\n" +
+	"\targuments\x18\x04 \x01(\tR\targuments\x12!\n" +
+	"\fworkspace_id\x18\x05 \x01(\tR\vworkspaceId\"4\n" +
 	"\x06Result\x12\x16\n" +
 	"\x06output\x18\x01 \x01(\tR\x06output\x12\x12\n" +
-	"\x04code\x18\x02 \x01(\rR\x04code29\n" +
+	"\x04code\x18\x02 \x01(\rR\x04code\".\n" +
+	"\x16CreateWorkspaceRequest\x12\x14\n" +
+	"\x05image\x18\x01 \x01(\tR\x05image\"'\n" +
+	"\x15CreateWorkspaceResult\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id2\x8f\x01\n" +
 	"\n" +
 	"Dispatcher\x12+\n" +
-	"\x04Call\x12\x11.dispatch.Request\x1a\x10.dispatch.ResultB,Z*github.com/LeonardJouve/pointsman/dispatchb\x06proto3"
+	"\x04Call\x12\x11.dispatch.Request\x1a\x10.dispatch.Result\x12T\n" +
+	"\x0fCreateWorkspace\x12 .dispatch.CreateWorkspaceRequest\x1a\x1f.dispatch.CreateWorkspaceResultB,Z*github.com/LeonardJouve/pointsman/dispatchb\x06proto3"
 
 var (
 	file_dispatch_proto_rawDescOnce sync.Once
@@ -171,16 +273,20 @@ func file_dispatch_proto_rawDescGZIP() []byte {
 	return file_dispatch_proto_rawDescData
 }
 
-var file_dispatch_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_dispatch_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_dispatch_proto_goTypes = []any{
-	(*Request)(nil), // 0: dispatch.Request
-	(*Result)(nil),  // 1: dispatch.Result
+	(*Request)(nil),                // 0: dispatch.Request
+	(*Result)(nil),                 // 1: dispatch.Result
+	(*CreateWorkspaceRequest)(nil), // 2: dispatch.CreateWorkspaceRequest
+	(*CreateWorkspaceResult)(nil),  // 3: dispatch.CreateWorkspaceResult
 }
 var file_dispatch_proto_depIdxs = []int32{
 	0, // 0: dispatch.Dispatcher.Call:input_type -> dispatch.Request
-	1, // 1: dispatch.Dispatcher.Call:output_type -> dispatch.Result
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
+	2, // 1: dispatch.Dispatcher.CreateWorkspace:input_type -> dispatch.CreateWorkspaceRequest
+	1, // 2: dispatch.Dispatcher.Call:output_type -> dispatch.Result
+	3, // 3: dispatch.Dispatcher.CreateWorkspace:output_type -> dispatch.CreateWorkspaceResult
+	2, // [2:4] is the sub-list for method output_type
+	0, // [0:2] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -197,7 +303,7 @@ func file_dispatch_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dispatch_proto_rawDesc), len(file_dispatch_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

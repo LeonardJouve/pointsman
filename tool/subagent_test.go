@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/LeonardJouve/pointsman/workspace"
 )
 
 // fakeRouter serves POST /sessions with createStatus and, when it is 201, the given events body.
@@ -48,7 +50,7 @@ func TestSubagent(t *testing.T) {
 		"id: 2\nevent: message\ndata: {\"role\":\"assistant\",\"content\":\"done\"}\n\n"+
 		"event: status\ndata: {\"status\":\"succeeded\"}\n\n")
 
-	output, code := subagent(context.Background(), subagentArgs)
+	output, code := subagent(context.Background(), workspace.Workspace{}, subagentArgs)
 	if code != 0 || output != "done" {
 		t.Errorf("got %q, %d", output, code)
 	}
@@ -57,7 +59,7 @@ func TestSubagent(t *testing.T) {
 func TestSubagentFailed(t *testing.T) {
 	fakeRouter(t, http.StatusCreated, "event: status\ndata: {\"status\":\"failed\"}\n\n")
 
-	if _, code := subagent(context.Background(), subagentArgs); code != 1 {
+	if _, code := subagent(context.Background(), workspace.Workspace{}, subagentArgs); code != 1 {
 		t.Errorf("got code %d, want code 1", code)
 	}
 }
@@ -65,7 +67,7 @@ func TestSubagentFailed(t *testing.T) {
 func TestSubagentCreateRefused(t *testing.T) {
 	fakeRouter(t, http.StatusBadRequest, "")
 
-	output, code := subagent(context.Background(), subagentArgs)
+	output, code := subagent(context.Background(), workspace.Workspace{}, subagentArgs)
 	if code != 1 || !strings.Contains(output, "no such agent") {
 		t.Errorf("got %q, %d", output, code)
 	}
@@ -74,13 +76,13 @@ func TestSubagentCreateRefused(t *testing.T) {
 func TestSubagentRouterNotSet(t *testing.T) {
 	t.Setenv("ROUTER_ADDR", "")
 
-	if _, code := subagent(context.Background(), subagentArgs); code != 1 {
+	if _, code := subagent(context.Background(), workspace.Workspace{}, subagentArgs); code != 1 {
 		t.Errorf("got code %d, want code 1", code)
 	}
 }
 
 func TestSubagentBadArguments(t *testing.T) {
-	if _, code := subagent(context.Background(), "{"); code != 1 {
+	if _, code := subagent(context.Background(), workspace.Workspace{}, "{"); code != 1 {
 		t.Errorf("got code %d, want code 1", code)
 	}
 }
@@ -91,7 +93,7 @@ func TestSubagentCancelled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	if _, code := subagent(ctx, subagentArgs); code != 1 {
+	if _, code := subagent(ctx, workspace.Workspace{}, subagentArgs); code != 1 {
 		t.Errorf("got code %d, want code 1", code)
 	}
 }

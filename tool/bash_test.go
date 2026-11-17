@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/LeonardJouve/pointsman/workspace"
 )
 
 func TestBash(t *testing.T) {
@@ -41,7 +43,7 @@ func TestBash(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			input := arguments(t, map[string]any{"command": test.command, "timeout": test.timeout})
-			output, code := bashTool.Run(test.ctx, input)
+			output, code := bashTool.Run(test.ctx, workspace.Workspace{}, input)
 			if output != test.output || code != test.code {
 				t.Errorf("got %q, %d, want %q, %d", output, code, test.output, test.code)
 			}
@@ -91,7 +93,7 @@ func TestBashTruncation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			output, code := bashTool.Run(context.Background(), arguments(t, map[string]any{"command": test.command}))
+			output, code := bashTool.Run(context.Background(), workspace.Workspace{}, arguments(t, map[string]any{"command": test.command}))
 			if code != 0 {
 				t.Fatalf("got code %d, output %q", code, output)
 			}
@@ -126,7 +128,7 @@ func TestBashBadArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, code := bashTool.Run(context.Background(), "{"); code != 1 {
+	if _, code := bashTool.Run(context.Background(), workspace.Workspace{}, "{"); code != 1 {
 		t.Errorf("got code %d, want code 1", code)
 	}
 }

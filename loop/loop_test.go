@@ -35,6 +35,14 @@ func (f fakeDispatcher) Call(
 	return f(request)
 }
 
+func (f fakeDispatcher) CreateWorkspace(
+	_ context.Context,
+	_ *dispatch.CreateWorkspaceRequest,
+	_ ...grpc.CallOption,
+) (*dispatch.CreateWorkspaceResult, error) {
+	return nil, nil
+}
+
 func echo(request *dispatch.Request) (*dispatch.Result, error) {
 	return &dispatch.Result{Output: fmt.Sprintf("out%s", request.Arguments)}, nil
 }

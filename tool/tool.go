@@ -3,11 +3,13 @@ package tool
 import (
 	"context"
 	"path/filepath"
+
+	"github.com/LeonardJouve/pointsman/workspace"
 )
 
 type Tool struct {
 	Schema Schema
-	Run    func(ctx context.Context, arguments string) (output string, code uint32)
+	Run    func(ctx context.Context, w workspace.Workspace, arguments string) (output string, code uint32)
 }
 
 // TODO move all this to workspaces
