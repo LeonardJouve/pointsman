@@ -225,7 +225,7 @@ loaded by `session.Load` at startup and each new one also written to its file) b
 
 Dispatch. The router sends each tool call over gRPC to a dispatcher, a separate process that holds the tool
 instances. A tool is a function there; `read`, `write` and `bash` will each start one Docker container per call, with
-the workspace mounted (item 4); `subagent` runs directly. The router never runs tool logic (SPEC §1, D2). The
+its workspace mounted (item 4); `subagent` runs directly. The router never runs tool logic (SPEC §1, D2). The
 contract below is the built one; the workspace changes it (Open). The contract:
 ```proto
 service Dispatcher {
@@ -257,19 +257,30 @@ Layout: one Go module. The two apps are `cmd/router` and `cmd/dispatcher`; the l
 
 Plan, bottom-up; one piece is one change, and each lists the decisions it needs (pieces 1-3, 5 and 6.1-6.2, tools, the
 server, `cmd/dispatcher`, `cmd/router`, `loop` and `api` agents and sessions, are built):
-4. **Workspaces and the Docker tools** (deferred). Docker is the sandbox (not a WSL distro). The workspace is one
-   Docker volume, mounted at `/work` in every container: one filesystem view for `read`, `write` and `bash`, and no
-   host paths (a live run failed because the model used WSL paths `/mnt/c/...`, which `resolve()` on Windows treated
-   as relative, so `write` and `bash` saw different filesystems). Paths are relative to `/work`.
-   - A workspace is a new resource the router manages and delegates to the dispatcher (the router never runs tool
-     logic, D2). A session can start with a workspace.
-   - One container per call (`docker run --rm` through `os/exec`), for `read`, `write` and `bash` alike. The image has
-     no Go toolchain: `read` and `write` use system binaries from the image, `bash` runs the model's command. The
-     exit code is returned as `code`.
-   Needs, all in Open: the API and RPC names, how the workspace reaches `Run`, the image, the network policy, the
-   limits, how Docker's own failures (exit 125-127) are reported: a non-zero code with the message, or a way for
-   `Run` to report them.
-   Built so far: the `workspace` package (`Create` and `Remove` a volume through the Docker CLI); nothing calls it yet.
+4. **Workspaces and the Docker tools** (deferred). Docker is the sandbox (not a WSL distro). A workspace is a host
+   folder, `store.Workspaces()/<id>`, mounted at `/work` in every container: one filesystem view for `read`, `write`
+   and `bash`, and no host paths for the model (a live run failed because the model used WSL paths `/mnt/c/...`,
+   which `resolve()` on Windows treated as relative, so `write` and `bash` saw different filesystems). Paths are
+   relative to `/work`.
+   - A workspace is a struct `workspace.Workspace{ID, Image}` with a `Path()` method (the folder). The image
+     is required. The dispatcher owns workspaces; the router only forwards the requests over gRPC
+     (D2). A session can start with a workspace.
+   - `Create` makes the folder and appends `{"id":...,"image":...}` to `store.Workspaces()/workspaces.jsonl`, one
+     file for all workspaces, outside every mount. The dispatcher loads it at startup into a map by id. A bad line
+     fails the startup with its line number. There is no delete: a workspace stays on disk until the folder is
+     removed by hand.
+   - `sandbox.Run(ctx, w, command...) (output, code, err)` starts one container per call: `docker run --rm
+     -v <w.Path()>:/work -w /work <w.Image> <command...>`, for `read`, `write` and `bash` alike. `code` is the
+     container's exit code; `err` is only for Docker's own failures. The image has bash and coreutils; the dispatcher's
+     caller supplies it.
+   - Network: Docker's default bridge, so `pip install` works. Known cost: the model's commands can reach the internet
+     and the host's network, and can send the workspace out. No memory, cpu or process limits for now: a runaway
+     command can load the host.
+   Needs, all in Open: the API and RPC names, how the workspace reaches a tool's `Run`.
+   Built so far: `store.Workspaces()`, the `workspace` package (`Workspace`, `Load`, `Create`, `Get`; the map is
+   behind a mutex) and `sandbox.Run`. Nothing calls them yet. A cancelled `ctx` kills the `docker run` client and
+   `Run` returns `ctx.Err()`; the container is not stopped and keeps running until its command ends (a fix needs
+   `--name` and `docker rm -f`). A command that itself exits 125 is taken for a Docker failure.
 5. **The session loop.** Built (`loop`, above).
 6. **The router API**, in three changes (HTTP, `cmd/router`):
    1. Agents. Built (`api`, above).
@@ -299,23 +310,15 @@ Deferred):
   nil there; `loop` covers the tool round.
 - **`-race` is unavailable** on the development machine (no cgo): the locks in `session` and `api` are checked by
   reading only.
-- **Workspaces (item 4), proposed and not decided.** Recommendations are marked.
-  - Dispatcher operations: two RPCs, `CreateWorkspace` and `DeleteWorkspace` (recommended), or a volume created lazily
-    on first use.
-  - The `Request` carries the workspace id in a new field, since the dispatcher knows nothing about sessions (the
-    `session_id` comment above then no longer holds). How a tool's `Run` receives it is open: it changes the shared
-    `Run` signature.
-  - API names, the user's call: `POST /workspaces`, `DELETE /workspaces/{id}`, an optional `workspace` on
-    `POST /sessions`.
+- **Workspaces (item 4), left to decide.** Recommendations are marked.
+  - The dispatcher gets `CreateWorkspace` (the service in Dispatch gets a second RPC). The `Request` carries the
+    workspace id in a new field, since the dispatcher knows nothing about sessions (the `session_id` comment above
+    then no longer holds). How a tool's `Run` receives the workspace is open: it changes the shared `Run` signature.
+  - API names, the user's call: `POST /workspaces`, an optional `workspace` on `POST /sessions`.
   - A session whose agent has `read`, `write` or `bash` and no workspace: `400` at creation (recommended).
   - One workspace shared by several sessions (a subagent on its parent's files): allowed, no guard (recommended).
-  - Delete while a session uses the workspace: `409` (recommended).
-  - Where the list lives: Docker is the source of truth (`docker volume ls` with a label filter, recommended), or a
-    file in `store/`.
   - `read` keeps its truncation in the dispatcher's Go code, windowing and formatting the output of `cat`
     (recommended), or moves it into the image.
-  - The image (bash and coreutils, Alpine proposed), the network policy (`--network none` proposed), memory and cpu
-    limits, and how Docker's own failures are reported: open.
 - **`bash` output and children.** The whole output is held in memory, and a command's children can outlive a timeout;
   both go with the Docker tool.
 - **`developer` or `system` role.** Some OpenAI-compatible servers reject `developer`; `provider` has only `System`.

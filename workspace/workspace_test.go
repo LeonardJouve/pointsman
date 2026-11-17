@@ -1,60 +1,101 @@
 package workspace
 
 import (
-	"context"
-	"fmt"
-	"os/exec"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
-	"time"
+
+	"github.com/LeonardJouve/pointsman/store"
 )
 
-func requireDocker(t *testing.T) {
+func setup(t *testing.T) *Workspaces {
 	t.Helper()
 
-	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("docker not on PATH")
-	}
+	t.Setenv("AppData", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	if err := exec.Command("docker", "info").Run(); err != nil {
-		t.Skip("docker daemon not answering")
-	}
-}
-
-func exists(id string) bool {
-	return exec.Command("docker", "volume", "inspect", id).Run() == nil
-}
-
-func TestCreateRemove(t *testing.T) {
-	requireDocker(t)
-
-	ctx := context.Background()
-	id := fmt.Sprintf("pointsman-test-%d", time.Now().UnixNano())
-	t.Cleanup(func() { exec.Command("docker", "volume", "rm", id).Run() })
-
-	if err := Create(ctx, id); err != nil {
+	ws, err := Load()
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !exists(id) {
-		t.Fatal("volume not created")
-	}
+	return ws
+}
 
-	if err := Remove(ctx, id); err != nil {
+func TestCreateGet(t *testing.T) {
+	ws := setup(t)
+
+	w, err := ws.Create("alpine")
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	if exists(id) {
-		t.Error("volume not removed")
+	got, ok := ws.Get(w.ID)
+	if !ok || got != w || w.Image != "alpine" {
+		t.Errorf("got %v %v, want %v", got, ok, w)
+	}
+
+	path, err := w.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		t.Errorf("folder not created: %v", err)
+	}
+
+	if _, ok := ws.Get("missing"); ok {
+		t.Error("found a missing workspace")
 	}
 }
 
-func TestRemoveMissing(t *testing.T) {
-	requireDocker(t)
+func TestCreateNoImage(t *testing.T) {
+	if _, err := setup(t).Create(""); err == nil {
+		t.Error("expected an error")
+	}
+}
 
-	err := Remove(context.Background(), fmt.Sprintf("pointsman-missing-%d", time.Now().UnixNano()))
-	if err == nil {
-		t.Fatal("expected an error")
+func TestLoad(t *testing.T) {
+	ws := setup(t)
+
+	a, err := ws.Create("python:3-slim")
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	t.Log(err)
+	b, err := ws.Create("alpine")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, w := range []Workspace{a, b} {
+		if got, ok := loaded.Get(w.ID); !ok || got != w {
+			t.Errorf("got %v %v, want %v", got, ok, w)
+		}
+	}
+}
+
+func TestLoadBadLine(t *testing.T) {
+	setup(t)
+
+	dir, err := store.Workspaces()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	content := "{\"id\":\"a\",\"image\":\"b\"}\nnot json\n"
+	if err := os.WriteFile(filepath.Join(dir, file), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = Load()
+	if err == nil || !strings.Contains(err.Error(), "line 2") {
+		t.Errorf("got %v", err)
+	}
 }

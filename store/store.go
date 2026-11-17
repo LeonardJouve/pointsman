@@ -37,3 +37,14 @@ func Sessions() (string, error) {
 
 	return sessions, os.MkdirAll(sessions, 0o700)
 }
+
+func Workspaces() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+
+	workspaces := filepath.Join(dir, "workspaces")
+
+	return workspaces, os.MkdirAll(workspaces, 0o700)
+}
