@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,11 +14,16 @@ import (
 )
 
 // fakeRouter serves POST /sessions with createStatus and, when it is 201, the given events body.
-func fakeRouter(t *testing.T, createStatus int, events string) {
+func fakeRouter(t *testing.T, createStatus int, events string) *string {
 	t.Helper()
+
+	var created string
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /sessions", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		created = string(body)
+
 		w.WriteHeader(createStatus)
 		if createStatus == http.StatusCreated {
 			fmt.Fprint(w, `{"id":"child"}`)
@@ -40,19 +46,38 @@ func fakeRouter(t *testing.T, createStatus int, events string) {
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 	t.Setenv("ROUTER_ADDR", strings.TrimPrefix(server.URL, "http://"))
+
+	return &created
 }
 
 const subagentArgs = `{"agent":"a","prompt":"p"}`
 
 func TestSubagent(t *testing.T) {
-	fakeRouter(t, http.StatusCreated, "id: 0\nevent: message\ndata: {\"role\":\"user\",\"content\":\"p\"}\n\n"+
+	created := fakeRouter(t, http.StatusCreated, "id: 0\nevent: message\ndata: {\"role\":\"user\",\"content\":\"p\"}\n\n"+
 		"id: 1\nevent: message\ndata: {\"role\":\"assistant\",\"content\":\"first\"}\n\n"+
 		"id: 2\nevent: message\ndata: {\"role\":\"assistant\",\"content\":\"done\"}\n\n"+
 		"event: status\ndata: {\"status\":\"succeeded\"}\n\n")
 
-	output, code := subagent(context.Background(), workspace.Workspace{}, subagentArgs)
+	output, code := subagent(context.Background(), workspace.Workspace{ID: "w1"}, subagentArgs)
 	if code != 0 || output != "done" {
 		t.Errorf("got %q, %d", output, code)
+	}
+
+	if want := `{"agent":"a","prompt":"p","workspace":"w1"}`; *created != want {
+		t.Errorf("created %s, want %s", *created, want)
+	}
+}
+
+func TestSubagentWorkspaceNotAnArgument(t *testing.T) {
+	created := fakeRouter(t, http.StatusCreated, "event: status\ndata: {\"status\":\"succeeded\"}\n\n")
+
+	arguments := `{"agent":"a","prompt":"p","workspace":"other"}`
+	if _, code := subagent(context.Background(), workspace.Workspace{ID: "w1"}, arguments); code != 0 {
+		t.Errorf("got code %d, want code 0", code)
+	}
+
+	if want := `{"agent":"a","prompt":"p","workspace":"w1"}`; *created != want {
+		t.Errorf("created %s, want %s", *created, want)
 	}
 }
 

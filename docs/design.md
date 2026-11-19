@@ -116,7 +116,9 @@ them). `read`, `write` and `subagent` run directly in the dispatcher, no Docker;
   construction: the router builds the schema without it; unset is a code 1 failure), POSTs `/sessions`, reads
   `GET /sessions/{id}/events` until the `status` frame and returns the `content` of the last `message` frame, code 0.
   A `failed` child, a bad request, a non-201 reply (with the API's `error`) or a cancelled `ctx` is code 1. A
-  cancelled `ctx` ends the wait, not the child. No parent link, no recursion guard.
+  cancelled `ctx` ends the wait, not the child. The child session is created on the parent's workspace: the body
+  of `POST /sessions` carries `workspace` set from the dispatcher's id of the call, never from an argument, so a subagent
+  shares the parent's files. No parent link, no recursion guard.
 - `bash` is pi's: parameters `command` and `timeout` (seconds, 0 or absent: none). It runs `sandbox.Run` with
   `bash -c <command>`, wrapped as `timeout <n> bash -c <command>` (coreutils, inside the container) when a timeout is
   set; stdout and stderr in one buffer (the shell merges stderr into stdout first, because Docker does not keep the
