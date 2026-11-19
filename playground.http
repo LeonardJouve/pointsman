@@ -1,7 +1,8 @@
 @host = http://localhost:8080
 
-### List agents
-GET {{host}}/agents
+### Models
+# @name models
+GET {{host}}/models
 
 ### Create a workspace
 # @name createWorkspace
