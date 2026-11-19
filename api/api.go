@@ -51,6 +51,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /sessions", s.listSessions)
 	mux.HandleFunc("GET /sessions/{id}", s.getSession)
 	mux.HandleFunc("GET /sessions/{id}/events", s.streamSession)
+	mux.HandleFunc("POST /workspaces", s.createWorkspace)
+	mux.HandleFunc("GET /workspaces", s.listWorkspaces)
 	mux.HandleFunc("GET /models", s.listModels)
 	mux.HandleFunc("GET /tools", s.listTools)
 	mux.Handle("GET /", http.FileServerFS(site))
