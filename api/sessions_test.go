@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,8 +13,10 @@ import (
 	"time"
 
 	"github.com/LeonardJouve/pointsman/agent"
+	"github.com/LeonardJouve/pointsman/dispatch"
 	"github.com/LeonardJouve/pointsman/provider"
 	"github.com/LeonardJouve/pointsman/session"
+	"github.com/LeonardJouve/pointsman/store"
 )
 
 // serve returns a handler whose model answers every request with the given status and body.
@@ -47,7 +50,7 @@ func start(t *testing.T, handler http.Handler) string {
 		t.Fatal(err)
 	}
 
-	request, _ := json.Marshal(sessionRequest{Agent: agent.ID.String(), Prompt: "hello"})
+	request, _ := json.Marshal(sessionRequest{Agent: agent.ID.String(), Prompt: "hello", WorkspaceID: "w1"})
 	created = send(handler, "POST", "/sessions", string(request))
 	if err := json.Unmarshal(created.Body.Bytes(), &session); err != nil || created.Code != http.StatusCreated {
 		t.Fatalf("got %d %s", created.Code, created.Body)
@@ -110,6 +113,89 @@ func TestCreateSessionErrors(t *testing.T) {
 		if code := send(handler, "POST", "/sessions", body).Code; code != http.StatusBadRequest {
 			t.Errorf("%s: got %d", name, code)
 		}
+	}
+}
+
+// postSession creates an agent, then posts a session on it with the given workspace; the fake is the dispatcher.
+func postSession(t *testing.T, fake *fakeDispatcher, workspace *string) (*Server, *httptest.ResponseRecorder) {
+	t.Helper()
+	isolate(t, t.TempDir())
+
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"done"}}]}`))
+	}))
+	t.Cleanup(model.Close)
+
+	server := New(provider.New(model.URL, "key"), fake, agent.Agents{}, session.Sessions{})
+	handler := server.Handler()
+
+	var a idResponse
+	created := send(handler, "POST", "/agents", `{"name":"a","model":"m"}`)
+	if err := json.Unmarshal(created.Body.Bytes(), &a); err != nil {
+		t.Fatal(err)
+	}
+
+	body := map[string]string{"agent": a.ID.String(), "prompt": "hello"}
+	if workspace != nil {
+		body["workspace"] = *workspace
+	}
+
+	request, _ := json.Marshal(body)
+
+	return server, send(handler, "POST", "/sessions", string(request))
+}
+
+func TestCreateSessionWorkspaceRefused(t *testing.T) {
+	unknown := "nope"
+	known := &fakeDispatcher{workspaces: []*dispatch.Workspace{{Id: "w1"}}}
+
+	for name, test := range map[string]struct {
+		fake      *fakeDispatcher
+		workspace *string
+		code      int
+		message   string
+	}{
+		"unknown":            {known, &unknown, http.StatusBadRequest, `unknown workspace "nope"`},
+		"missing":            {known, nil, http.StatusBadRequest, `unknown workspace ""`},
+		"dispatcher is down": {&fakeDispatcher{err: errors.New("down")}, &unknown, http.StatusBadGateway, "down"},
+	} {
+		server, got := postSession(t, test.fake, test.workspace)
+
+		var failure errorResponse
+		if err := json.Unmarshal(got.Body.Bytes(), &failure); err != nil || got.Code != test.code ||
+			failure.Error != test.message {
+			t.Errorf("%s: got %d %s", name, got.Code, got.Body)
+		}
+
+		dir, err := store.Sessions()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		files, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+		if len(server.sessions) != 0 || len(files) != 0 {
+			t.Errorf("%s: %d sessions, %d files", name, len(server.sessions), len(files))
+		}
+	}
+}
+
+func TestCreateSessionStoresWorkspace(t *testing.T) {
+	workspace := "w1"
+	server, got := postSession(t, &fakeDispatcher{workspaces: []*dispatch.Workspace{{Id: "w1"}}}, &workspace)
+
+	var created idResponse
+	if err := json.Unmarshal(got.Body.Bytes(), &created); err != nil || got.Code != http.StatusCreated {
+		t.Fatalf("got %d %s", got.Code, got.Body)
+	}
+
+	if found := server.sessions[created.ID]; found == nil || found.WorkspaceID != "w1" {
+		t.Errorf("got %+v", found)
+	}
+
+	loaded, err := session.Load(server.agents)
+	if err != nil || loaded[created.ID] == nil || loaded[created.ID].WorkspaceID != "w1" {
+		t.Errorf("file: got %v, %v", loaded, err)
 	}
 }
 
@@ -244,7 +330,8 @@ func TestCreateSessionWriteFails(t *testing.T) {
 	folder := t.TempDir()
 	isolate(t, folder)
 
-	handler := New(nil, nil, agent.Agents{}, session.Sessions{}).Handler()
+	fake := &fakeDispatcher{workspaces: []*dispatch.Workspace{{Id: "w1"}}}
+	handler := New(nil, fake, agent.Agents{}, session.Sessions{}).Handler()
 
 	var a idResponse
 	created := send(handler, "POST", "/agents", `{"name":"a","model":"m"}`)
@@ -256,7 +343,7 @@ func TestCreateSessionWriteFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	request, _ := json.Marshal(sessionRequest{Agent: a.ID.String(), Prompt: "hello"})
+	request, _ := json.Marshal(sessionRequest{Agent: a.ID.String(), Prompt: "hello", WorkspaceID: "w1"})
 	if code := send(handler, "POST", "/sessions", string(request)).Code; code != http.StatusInternalServerError {
 		t.Errorf("got %d", code)
 	}

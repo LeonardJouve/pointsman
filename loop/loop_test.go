@@ -82,7 +82,7 @@ func start(t *testing.T) *session.Session {
 	t.Setenv("AppData", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	s, err := session.New(&agent.Agent{})
+	s, err := session.New(&agent.Agent{}, "w1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestRunNoToolCalls(t *testing.T) {
 func TestRunToolCalls(t *testing.T) {
 	s := start(t)
 	dispatcher := fakeDispatcher(func(request *dispatch.Request) (*dispatch.Result, error) {
-		if request.SessionId != s.ID.String() || request.Name != "look" {
+		if request.SessionId != s.ID.String() || request.WorkspaceId != "w1" || request.Name != "look" {
 			t.Errorf("request = %+v", request)
 		}
 

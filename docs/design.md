@@ -58,8 +58,9 @@ tool never receives a zero `Workspace`. `CreateWorkspace` calls `Workspaces.Crea
 (empty image, disk) is returned as is. `GetWorkspace` returns the workspace of an id with `Workspaces.Get`; an unknown id (or an empty one) is a `NotFound` status error, while `Call` still returns a plain error. `ListWorkspaces` returns every workspace, in no particular order. The loop writes a non-zero code into the tool message. Tests call the methods
 directly, without a gRPC server.
 
-**session**: `Session{ID, Agent, Created}` (`Agent` is a `*agent.Agent`) and an unexported log.
-`session.New(a)` returns a `*Session` and an error, with a random ID (stdlib `uuid.New()`; V7 if sorting by creation is
+**session**: `Session{ID, Agent, Created, Workspace}` (`Agent` is a `*agent.Agent`; `Workspace` is the dispatcher's
+workspace id, a string) and an unexported log.
+`session.New(a, workspaceID)` returns a `*Session` and an error, with a random ID (stdlib `uuid.New()`; V7 if sorting by creation is
 ever needed), `Created` set to `time.Now()`, and no messages. `AppendUser` and `AppendRound` are the
 only way the loop writes the log and return an error; a log entry is a `provider.Message`. `AppendRound(reply, outputs)`
 writes a reply and its tool results, in call order, in one write, so a recorded round is a checkpoint: all of it is in
@@ -78,7 +79,7 @@ The ID never reaches the model (D3): `Context` takes the agent and the messages 
 
 The file: `<store.Sessions()>/<id>.jsonl` (mode 0600),
 one JSON object with one key per line (the keys are the `kind` constants), in `session/store.go`.
-`New` creates it (it must not exist) with `{"header":{"created":"<RFC3339>","agent":"<agent id>"}}`: the agent id,
+`New` creates it (it must not exist) with `{"header":{"created":"<RFC3339>","agent":"<agent id>","workspace":"<workspace id>"}}`: the agent id,
 not a copy of the agent. Then `{"message":<provider.Message>}` for every message, and `{"status":"succeeded"}` or
 `{"status":"failed"}` when the status is set; `Running` is never written, it is the absence of a status line, so a
 file with no status line has not ended. Every write is one append: the file is opened, written and closed each time, the
@@ -87,9 +88,9 @@ and change the memory only if it succeeded, so the log never holds a message the
 the error and changes nothing. `SetStatus` is the exception: it sets the memory and wakes the readers even if the write
 fails (the stream would wait on `Running` forever), then returns the write error.
 `session.Load(agents)` reads every `*.jsonl` in `store.Sessions()` into a map of id (the file name) to `*Session`: the
-header gives `Created` and the agent (looked up in `agents`), then the `message` lines in order, and a `status` line
+header gives `Created`, the agent (looked up in `agents`) and the workspace id, then the `message` lines in order, and a `status` line
 sets the status. A file that cannot be loaded (first line not a header, a line that does not parse, an unknown kind,
-an agent not in the map) is an error naming the file, and `cmd/router` exits. Other damage (a torn last line, a
+an agent not in the map) is an error naming the file, and `cmd/router` exits. A header with no `workspace` loads with an empty id, and the dispatcher refuses each tool call of that session (`unknown workspace ""`). Other damage (a torn last line, a
 duplicate header, an unknown status word) is not handled. A file with no status line loads as `Running`: it has not
 ended, and `api.Server.Resume` runs it again (see `api`).
 
@@ -101,7 +102,7 @@ caller appends the user message first and reads the answer from the last message
 - The log stays valid: the reply and all its results are appended together, after every call succeeded. On any
   error (`Send`, a truncated reply, a dispatcher call) `Run` returns it and the log is unchanged. No retry.
 - `Run` works on a loaded log as on a new one, so a resumed session repeats the step that was cut off.
-- The request carries the session ID, the call's ID, the function name and the model's arguments as they are.
+- The request carries the session ID, the session's workspace ID, the call's ID, the function name and the model's arguments as they are.
 - A dispatcher error is returned, never written to the model (D24). A `Result` with `code != 0` becomes the tool
   message `output + "\nCommand exited with code N"`; code 0 leaves
   the output as is.
@@ -179,8 +180,10 @@ loaded by `session.Load` at startup and each new one also written to its file) b
 - `GET /tools` returns the schema of every built-in tool (`tool.All()`), a JSON array of `tool.Schema` with its Go
   field names as keys (`Name`, `Description`, `Parameters`); `Run` is not sent. An error is a `500` with
   `{"error": "..."}`.
-- `POST /sessions` takes `{"agent": "<agent id>", "prompt": "..."}` (an empty prompt is accepted), creates the session,
-  appends the prompt, starts the run (`run`) and returns `201` and
+- `POST /sessions` takes `{"agent": "<agent id>", "prompt": "...", "workspace": "<workspace id>"}` (an empty prompt is
+  accepted; `workspace` is required). After the agent check it calls the dispatcher's `GetWorkspace`: `NotFound` (an
+  unknown or empty id) is a `400` with the dispatcher's message (`unknown workspace "<id>"`), any other error a `502` with its text. Only then it creates the
+  session (nothing is written for a refused request), appends the prompt, starts the run (`run`) and returns `201` and
   `{"id": "<uuid>"}` at once. A failed file write (`session.New` or the prompt) is a `500`: the session is not kept and
   no run starts. `Run` sets the status (`succeeded` or `failed`); the goroutine
   only logs its error with `log.Print`. Nothing cancels a run: a stopped router kills its runs, and at the next start
@@ -221,7 +224,7 @@ loaded by `session.Load` at startup and each new one also written to its file) b
   error text instead. `api.js` (`request`: GET or POST JSON, returns the body or the API's error text) and `form.js`
   (`field`) are shared; there is one file per tab otherwise.
 - Errors are `{"error": "..."}`: bad JSON, an unknown tool name, or (for a session) an agent id that is not a uuid or
-  not known is a 400; an unknown or malformed session id is a 404.
+  not known, or a workspace the dispatcher does not know, is a 400; an unknown or malformed session id is a 404.
 
 ## Facts: the Chat Completions context
 
@@ -303,7 +306,7 @@ server, `cmd/dispatcher`, `cmd/router`, `loop` and `api` agents and sessions, ar
    error. Only `bash` is isolated in a container: the isolation that matters is the model's commands.
    - A workspace is a struct `workspace.Workspace{ID, Image}` with a `Path()` method (the folder). The image
      is required. The dispatcher owns workspaces; the router only forwards the requests over gRPC
-     (D2). A session can start with a workspace.
+     (D2). A session has a required workspace.
    - `Create` makes the folder and appends `{"id":...,"image":...}` to `store.Workspaces()/workspaces.jsonl`, one
      file for all workspaces, outside every mount. The dispatcher loads it at startup into a map by id. A bad line
      fails the startup with its line number. There is no delete: a workspace stays on disk until the folder is
@@ -316,11 +319,12 @@ server, `cmd/dispatcher`, `cmd/router`, `loop` and `api` agents and sessions, ar
    - Network: Docker's default bridge, so `pip install` works. Known cost: the model's commands can reach the internet
      and the host's network, and can send the workspace out. No memory, cpu or process limits for now: a runaway
      command can load the host.
-   Needs, all in Open: the API names, the loop sending the id, the tools on `sandbox`.
-   Built so far: `store.Workspaces()`, the `workspace` package (`Workspace`, `Load`, `Create`, `Get`; the map is
-   behind a mutex), `sandbox.Run`, and the dispatcher side: `CreateWorkspace`, `workspace_id` on `Request`, the
-   workspace passed to every tool's `Run`. `bash` runs on `sandbox`; `read` and `write` do not yet, and the loop
-   sends no `workspace_id`, so live calls are refused until it does. A cancelled `ctx` kills the `docker run` client and
+   Needs, all in Open: the API names.
+   Built so far: `store.Workspaces()`, the `workspace` package (`Workspace`, `Load`, `Create`, `Get`, `List`; the map is
+   behind a mutex), `sandbox.Run`, and the dispatcher side: `CreateWorkspace`, `GetWorkspace`, `ListWorkspaces`, `workspace_id` on `Request`, the
+   workspace passed to every tool's `Run`. `bash` runs on `sandbox`, `read` and `write` on `os.Root`. A session
+   has a required workspace (checked at creation, persisted in its header) and the loop sends it as `workspace_id`;
+   `subagent` creates its child on the parent's workspace. A cancelled `ctx` kills the `docker run` client and
    `Run` returns `ctx.Err()`; the container is not stopped and keeps running until its command ends (a fix needs
    `--name` and `docker rm -f`). A command that itself exits 125 is taken for a Docker failure.
 5. **The session loop.** Built (`loop`, above).
@@ -353,12 +357,10 @@ Deferred):
 - **`-race` is unavailable** on the development machine (no cgo): the locks in `session` and `api` are checked by
   reading only.
 - **Workspaces (item 4), left to decide.** Recommendations are marked.
-  - API names, the user's call: `POST /workspaces`, an optional `workspace` on `POST /sessions`.
-  - A session whose agent has `read`, `write` or `bash` and no workspace: `400` at creation (recommended).
-  - One workspace shared by several sessions (a subagent on its parent's files): allowed, no guard (recommended).
-  - `read` keeps its truncation in the dispatcher's Go code, windowing and formatting the output of `cat`
-    (recommended), or moves it into the image.
-  - Moving `read` and `write` onto `sandbox` (`bash` is done), and the loop sending the workspace id.
+  - Left: the dashboard's session form (it sends no `workspace`, so
+    it gets a `400`).
+  - One workspace shared by several sessions (a subagent on its parent's files): allowed, no guard (recommended; built for `subagent`: the parent waits for the child, so they do not write at the
+    same time).
   - `session_id` stays on `Request` though nothing reads it.
 - **`bash` output.** The whole output is held in memory.
 - **`developer` or `system` role.** Some OpenAI-compatible servers reject `developer`; `provider` has only `System`.

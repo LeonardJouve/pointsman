@@ -58,10 +58,11 @@ func callTools(ctx context.Context, s *session.Session, reply provider.Reply, di
 	for i, call := range reply.ToolCalls {
 		wg.Go(func() {
 			result, err := dispatcher.Call(ctx, &dispatch.Request{
-				SessionId: s.ID.String(),
-				CallId:    call.ID,
-				Name:      call.Function.Name,
-				Arguments: call.Function.Arguments,
+				SessionId:   s.ID.String(),
+				WorkspaceId: s.WorkspaceID,
+				CallId:      call.ID,
+				Name:        call.Function.Name,
+				Arguments:   call.Function.Arguments,
 			})
 			if err != nil {
 				errs[i] = err

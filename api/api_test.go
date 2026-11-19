@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/LeonardJouve/pointsman/agent"
+	"github.com/LeonardJouve/pointsman/dispatch"
 	"github.com/LeonardJouve/pointsman/provider"
 	"github.com/LeonardJouve/pointsman/session"
 )
@@ -26,7 +27,8 @@ func newHandler(t *testing.T, client *provider.Client) http.Handler {
 	t.Helper()
 	isolate(t, t.TempDir())
 
-	return New(client, nil, agent.Agents{}, session.Sessions{}).Handler()
+	return New(client, &fakeDispatcher{workspaces: []*dispatch.Workspace{{Id: "w1"}}}, agent.Agents{}, session.Sessions{}).
+		Handler()
 }
 
 func do(t *testing.T, method, path, body string) *httptest.ResponseRecorder {

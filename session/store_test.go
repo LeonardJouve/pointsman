@@ -36,7 +36,7 @@ func TestFile(t *testing.T) {
 	isolate(t)
 
 	a := &agent.Agent{ID: uuid.New()}
-	s, err := New(a)
+	s, err := New(a, "w1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,9 @@ func TestFile(t *testing.T) {
 	}
 
 	want := []string{
-		fmt.Sprintf(`{"header":{"created":"%s","agent":"%s"}}`, s.Created.Format(time.RFC3339Nano), a.ID),
+		fmt.Sprintf(
+			`{"header":{"created":"%s","agent":"%s","workspace":"w1"}}`, s.Created.Format(time.RFC3339Nano), a.ID,
+		),
 		`{"message":{"content":"hi","role":"user"}}`,
 		`{"status":"succeeded"}`,
 	}
@@ -84,7 +86,7 @@ func TestWriteFails(t *testing.T) {
 	t.Setenv("AppData", blocker)
 	t.Setenv("XDG_CONFIG_HOME", blocker)
 
-	if _, err := New(&agent.Agent{}); err == nil {
+	if _, err := New(&agent.Agent{}, "w1"); err == nil {
 		t.Error("New: no error")
 	}
 
@@ -156,7 +158,7 @@ func TestLoadRoundTrip(t *testing.T) {
 	isolate(t)
 
 	a := &agent.Agent{ID: uuid.New()}
-	s, err := New(a)
+	s, err := New(a, "w1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +189,8 @@ func TestLoadRoundTrip(t *testing.T) {
 	}
 
 	got := sessions[s.ID]
-	if got == nil || got.Agent != a || !got.Created.Equal(s.Created) || got.Status() != Failed || got.changed == nil {
+	if got == nil || got.Agent != a || got.WorkspaceID != "w1" || !got.Created.Equal(s.Created) ||
+		got.Status() != Failed || got.changed == nil {
 		t.Fatalf("got %+v", got)
 	}
 
@@ -227,14 +230,16 @@ func TestLoadEmpty(t *testing.T) {
 
 func TestLoadFails(t *testing.T) {
 	known := uuid.New()
-	header := fmt.Sprintf(`{"header":{"created":"2026-01-02T03:04:05Z","agent":"%s"}}`, known)
+	header := fmt.Sprintf(`{"header":{"created":"2026-01-02T03:04:05Z","agent":"%s","workspace":"w1"}}`, known)
 	agents := agent.Agents{known: {ID: known}}
 
 	for name, content := range map[string]string{
-		"not a header":  "{\"status\":\"failed\"}\n",
-		"bad json":      fmt.Sprintf("%s\n{\n", header),
-		"unknown kind":  fmt.Sprintf("%s\n{\"note\":\"x\"}\n", header),
-		"unknown agent": fmt.Sprintf("{\"header\":{\"created\":\"2026-01-02T03:04:05Z\",\"agent\":\"%s\"}}\n", uuid.New()),
+		"not a header": "{\"status\":\"failed\"}\n",
+		"bad json":     fmt.Sprintf("%s\n{\n", header),
+		"unknown kind": fmt.Sprintf("%s\n{\"note\":\"x\"}\n", header),
+		"unknown agent": fmt.Sprintf(
+			"{\"header\":{\"created\":\"2026-01-02T03:04:05Z\",\"agent\":\"%s\",\"workspace\":\"w1\"}}\n", uuid.New(),
+		),
 	} {
 		isolate(t)
 
