@@ -172,6 +172,10 @@ loaded by `session.Load` at startup and each new one also written to its file) b
   There is no `GET /agents/{id}` for now.
 - `GET /models` returns the model ids the provider lists, a JSON array (`[]` when empty); a provider error is a `502`
   with `{"error": "..."}`. `POST /agents` does not check its model against it.
+- `POST /workspaces` takes `{"image": "..."}` and forwards it to the dispatcher's `CreateWorkspace`; it returns `201` and
+  `{"id": "...", "image": "..."}`. `GET /workspaces` forwards `ListWorkspaces` and returns a JSON array of the same
+  objects (`[]` when empty, no order). The router keeps no workspace state and does not check the image (the dispatcher
+  does). A body that does not decode is a `400`; any failed dispatcher call is a `502` with `{"error": "..."}`.
 - `GET /tools` returns the schema of every built-in tool (`tool.All()`), a JSON array of `tool.Schema` with its Go
   field names as keys (`Name`, `Description`, `Parameters`); `Run` is not sent. An error is a `500` with
   `{"error": "..."}`.
