@@ -19,24 +19,26 @@ const (
 )
 
 type Session struct {
-	mu       sync.Mutex
-	ID       uuid.UUID
-	Created  time.Time
-	Agent    *agent.Agent
-	messages []provider.Message
-	status   Status
-	changed  chan struct{}
+	mu          sync.Mutex
+	ID          uuid.UUID
+	Created     time.Time
+	Agent       *agent.Agent
+	WorkspaceID string
+	messages    []provider.Message
+	status      Status
+	changed     chan struct{}
 }
 
 type Sessions map[uuid.UUID]*Session
 
-func New(a *agent.Agent) (*Session, error) {
+func New(a *agent.Agent, workspaceID string) (*Session, error) {
 	s := &Session{
-		ID:      uuid.New(),
-		Created: time.Now(),
-		Agent:   a,
-		status:  Running,
-		changed: make(chan struct{}),
+		ID:          uuid.New(),
+		Created:     time.Now(),
+		Agent:       a,
+		WorkspaceID: workspaceID,
+		status:      Running,
+		changed:     make(chan struct{}),
 	}
 
 	return s, create(s)

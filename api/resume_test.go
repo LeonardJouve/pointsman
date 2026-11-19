@@ -15,7 +15,7 @@ import (
 func unfinished(t *testing.T, a *agent.Agent) *session.Session {
 	t.Helper()
 
-	created, err := session.New(a)
+	created, err := session.New(a, "w1")
 	if err != nil {
 		t.Fatal(err)
 	}

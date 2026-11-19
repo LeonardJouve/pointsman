@@ -35,6 +35,30 @@ func (f fakeDispatcher) Call(
 	return f(request)
 }
 
+func (f fakeDispatcher) CreateWorkspace(
+	_ context.Context,
+	_ *dispatch.CreateWorkspaceRequest,
+	_ ...grpc.CallOption,
+) (*dispatch.Workspace, error) {
+	return nil, nil
+}
+
+func (f fakeDispatcher) GetWorkspace(
+	_ context.Context,
+	_ *dispatch.GetWorkspaceRequest,
+	_ ...grpc.CallOption,
+) (*dispatch.Workspace, error) {
+	return nil, nil
+}
+
+func (f fakeDispatcher) ListWorkspaces(
+	_ context.Context,
+	_ *dispatch.ListWorkspacesRequest,
+	_ ...grpc.CallOption,
+) (*dispatch.ListWorkspacesResult, error) {
+	return nil, nil
+}
+
 func echo(request *dispatch.Request) (*dispatch.Result, error) {
 	return &dispatch.Result{Output: fmt.Sprintf("out%s", request.Arguments)}, nil
 }
@@ -58,7 +82,7 @@ func start(t *testing.T) *session.Session {
 	t.Setenv("AppData", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	s, err := session.New(&agent.Agent{})
+	s, err := session.New(&agent.Agent{}, "w1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +134,7 @@ func TestRunNoToolCalls(t *testing.T) {
 func TestRunToolCalls(t *testing.T) {
 	s := start(t)
 	dispatcher := fakeDispatcher(func(request *dispatch.Request) (*dispatch.Result, error) {
-		if request.SessionId != s.ID.String() || request.Name != "look" {
+		if request.SessionId != s.ID.String() || request.WorkspaceId != "w1" || request.Name != "look" {
 			t.Errorf("request = %+v", request)
 		}
 

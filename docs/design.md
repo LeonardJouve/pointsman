@@ -43,20 +43,24 @@ folders; all create the folder.
 - `provider.Tools` converts schemas to the wire format (the SDK's map) and returns the conversion error, which
   `Context` passes on. It is a plain function.
 - `Tool{Schema, Run}` pairs a schema with its function,
-  `Run func(ctx, arguments string) (output string, code uint32)`: `arguments` is the model's JSON, parsed by the
-  tool; a tool failure is a non-zero `code` with the message as `output`. A tool has no error path: errors are the
-  dispatcher's own (an unknown tool). The router imports a tool for its schema (`provider`
+  `Run func(ctx, w workspace.Workspace, arguments string) (output string, code uint32)`: `arguments` is the
+  model's JSON, parsed by the tool; a tool failure is a non-zero `code` with the message as `output`. A tool has no error path: errors are the
+  dispatcher's own (an unknown tool or workspace). The router imports a tool for its schema (`provider`
   resolves names with it), the dispatcher for its function. One module builds both apps from one commit, so the two
-  cannot drift; a `List` RPC would replace the import only if tools must be deployed without the router. The
-  workspace parameter comes with the Docker tool, and so does where tool instances live.
+  cannot drift; a `List` RPC would replace the import only if tools must be deployed without the router. Every tool
+  takes the workspace; none uses it yet. Where tool instances live comes with the Docker tool.
 
-**dispatch**: the gRPC contract (below) and `NewServer(tools []tool.Tool)`, which implements `Dispatcher.Call`: it
-looks the tool up by `Schema.Name` (a name is written once), runs it and returns the `Result`. An unknown tool is a
-plain Go error: it reaches the router as gRPC `Unknown`. The loop writes a non-zero code into the tool message. Tests
-call `Call` directly, without a gRPC server.
+**dispatch**: the gRPC contract (below) and `NewServer(tools []tool.Tool, workspaces *workspace.Workspaces)`, which
+implements the `Dispatcher` service. `Call` looks the tool up by `Schema.Name` (a name is written once) and the
+workspace by `workspace_id`, runs the tool in it and returns the `Result`. Every call needs a known workspace: an
+unknown tool, and an empty or unknown workspace id, are plain Go errors that reach the router as gRPC `Unknown`; a
+tool never receives a zero `Workspace`. `CreateWorkspace` calls `Workspaces.Create` and returns the `Workspace`; its error
+(empty image, disk) is returned as is. `GetWorkspace` returns the workspace of an id with `Workspaces.Get`; an unknown id (or an empty one) is a `NotFound` status error, while `Call` still returns a plain error. `ListWorkspaces` returns every workspace, in no particular order. The loop writes a non-zero code into the tool message. Tests call the methods
+directly, without a gRPC server.
 
-**session**: `Session{ID, Agent, Created}` (`Agent` is a `*agent.Agent`) and an unexported log.
-`session.New(a)` returns a `*Session` and an error, with a random ID (stdlib `uuid.New()`; V7 if sorting by creation is
+**session**: `Session{ID, Agent, Created, Workspace}` (`Agent` is a `*agent.Agent`; `Workspace` is the dispatcher's
+workspace id, a string) and an unexported log.
+`session.New(a, workspaceID)` returns a `*Session` and an error, with a random ID (stdlib `uuid.New()`; V7 if sorting by creation is
 ever needed), `Created` set to `time.Now()`, and no messages. `AppendUser` and `AppendRound` are the
 only way the loop writes the log and return an error; a log entry is a `provider.Message`. `AppendRound(reply, outputs)`
 writes a reply and its tool results, in call order, in one write, so a recorded round is a checkpoint: all of it is in
@@ -75,7 +79,7 @@ The ID never reaches the model (D3): `Context` takes the agent and the messages 
 
 The file: `<store.Sessions()>/<id>.jsonl` (mode 0600),
 one JSON object with one key per line (the keys are the `kind` constants), in `session/store.go`.
-`New` creates it (it must not exist) with `{"header":{"created":"<RFC3339>","agent":"<agent id>"}}`: the agent id,
+`New` creates it (it must not exist) with `{"header":{"created":"<RFC3339>","agent":"<agent id>","workspace":"<workspace id>"}}`: the agent id,
 not a copy of the agent. Then `{"message":<provider.Message>}` for every message, and `{"status":"succeeded"}` or
 `{"status":"failed"}` when the status is set; `Running` is never written, it is the absence of a status line, so a
 file with no status line has not ended. Every write is one append: the file is opened, written and closed each time, the
@@ -84,9 +88,9 @@ and change the memory only if it succeeded, so the log never holds a message the
 the error and changes nothing. `SetStatus` is the exception: it sets the memory and wakes the readers even if the write
 fails (the stream would wait on `Running` forever), then returns the write error.
 `session.Load(agents)` reads every `*.jsonl` in `store.Sessions()` into a map of id (the file name) to `*Session`: the
-header gives `Created` and the agent (looked up in `agents`), then the `message` lines in order, and a `status` line
+header gives `Created`, the agent (looked up in `agents`) and the workspace id, then the `message` lines in order, and a `status` line
 sets the status. A file that cannot be loaded (first line not a header, a line that does not parse, an unknown kind,
-an agent not in the map) is an error naming the file, and `cmd/router` exits. Other damage (a torn last line, a
+an agent not in the map) is an error naming the file, and `cmd/router` exits. A header with no `workspace` loads with an empty id, and the dispatcher refuses each tool call of that session (`unknown workspace ""`). Other damage (a torn last line, a
 duplicate header, an unknown status word) is not handled. A file with no status line loads as `Running`: it has not
 ended, and `api.Server.Resume` runs it again (see `api`).
 
@@ -98,7 +102,7 @@ caller appends the user message first and reads the answer from the last message
 - The log stays valid: the reply and all its results are appended together, after every call succeeded. On any
   error (`Send`, a truncated reply, a dispatcher call) `Run` returns it and the log is unchanged. No retry.
 - `Run` works on a loaded log as on a new one, so a resumed session repeats the step that was cut off.
-- The request carries the session ID, the call's ID, the function name and the model's arguments as they are.
+- The request carries the session ID, the session's workspace ID, the call's ID, the function name and the model's arguments as they are.
 - A dispatcher error is returned, never written to the model (D24). A `Result` with `code != 0` becomes the tool
   message `output + "\nCommand exited with code N"`; code 0 leaves
   the output as is.
@@ -107,17 +111,23 @@ caller appends the user message first and reads the answer from the last message
 `tool.Subagent()` and `tool.Bash()`, returning the schema-generation error; `tool.All()` returns every built-in tool, the one list,
 and the first constructor error):
 copies of pi's, same names, parameters, descriptions and limits (2000 lines or 50KB, from the constants that enforce
-them). They run directly in the dispatcher, no Docker.
+them). `read`, `write` and `subagent` run directly in the dispatcher, no Docker; only `bash` starts a container.
 - `subagent` is not from pi: parameters `agent` (an agent id) and `prompt`. `Run` reads `ROUTER_ADDR` (not at
   construction: the router builds the schema without it; unset is a code 1 failure), POSTs `/sessions`, reads
   `GET /sessions/{id}/events` until the `status` frame and returns the `content` of the last `message` frame, code 0.
   A `failed` child, a bad request, a non-201 reply (with the API's `error`) or a cancelled `ctx` is code 1. A
-  cancelled `ctx` ends the wait, not the child. No parent link, no recursion guard.
-- `bash` is pi's: parameters `command` and `timeout` (seconds, 0 or absent: none). It runs `bash -c` directly in the
-  dispatcher, in its working directory, stdout and stderr in one buffer. The tail is kept at the read limits; when it cuts,
-  the full output goes to a `bash-*.log` temp file named in pi's note. A timeout or a cancelled `ctx` stops the shell only,
-  not its children, and adds `Command timed out after N seconds` or `Command aborted`, code 1. The exit code is returned
-  as `code`; the loop adds the exit line. `bash` not found is code 1.
+  cancelled `ctx` ends the wait, not the child. The child session is created on the parent's workspace: the body
+  of `POST /sessions` carries `workspace` set from the dispatcher's id of the call, never from an argument, so a subagent
+  shares the parent's files. No parent link, no recursion guard.
+- `bash` is pi's: parameters `command` and `timeout` (seconds, 0 or absent: none). It runs `sandbox.Run` with
+  `bash -c <command>`, wrapped as `timeout <n> bash -c <command>` (coreutils, inside the container) when a timeout is
+  set; stdout and stderr in one buffer (the shell merges stderr into stdout first, because Docker does not keep the
+  order of the two streams). The tail is kept at the read limits; when it cuts, the full output goes to a
+  new `bash-*.log` file in the workspace folder (`/work/bash-*.log` for the model), named relative to `/work` in pi's
+  note and never removed. Exit 124 with a timeout set adds `Command timed out after N seconds`, code 1 (a command's own
+  124 is taken for it). A cancelled `ctx` adds `Command aborted`, code 1: the docker client is killed, the container
+  keeps running until its command ends. Any other exit code is returned as `code`; the loop adds the exit line. A
+  Docker failure is code 1 with its message.
 - The parameters schema is generated from the argument struct (`jsonschema.For`, descriptions in `jsonschema` tags,
   optional fields `omitzero`), so the struct is the one source of truth. The generated schema differs from pi's:
   `offset` and `limit` are integers and `additionalProperties` is false. A `limit` of 0 or absent means no limit (pi
@@ -126,11 +136,15 @@ them). They run directly in the dispatcher, no Docker.
 - `read` continues with one note for every cut (line cap, byte cap or `limit`): `[Showing lines A-B of N. Use
   offset=X to continue.]`, instead of pi's three variants.
 - Errors (missing file, bad offset, bad arguments JSON) are a `Result` with code 1 and the message as output.
-- Paths: relative ones start at `root` (`"."`, in `tool/tool.go`); absolute paths and `..` are not rejected, as in
-  pi. Confinement and the root come with workspaces.
+- `read` and `write` are Go over `os.Root` on the workspace folder (`Workspace.Path()`), opened per call and closed
+  after. `os.Root` refuses `..`, absolute paths and symlinks leaving the folder, which matters because the model's
+  `bash` can create a symlink to a host file. Paths are relative to `/work` (what the model sees): `relative` in
+  `tool/tool.go` strips a leading `/work/`; any other absolute path is an error ("path must be relative to /work").
+  `write` creates parent directories (0o755) and writes the file (0o644). On Windows `os.Root` takes `\` as a
+  separator too, so a `\` path is confined like a `/` one.
 
-**cmd/dispatcher**: listens on `DISPATCHER_ADDR` and serves `dispatch.NewServer` with the tools from `tool.All()`;
-its error is fatal.
+**cmd/dispatcher**: listens on `DISPATCHER_ADDR` and serves `dispatch.NewServer` with the tools from `tool.All()` and
+the workspaces from `workspace.Load()`; their errors are fatal.
 
 **cmd/router**: loads the agents and sessions (`agent.Load`, `session.Load`), builds
 `provider.New(LLM_BASE_URL, LLM_API_KEY)`, dials the dispatcher at `DISPATCHER_ADDR` (insecure
@@ -161,11 +175,17 @@ loaded by `session.Load` at startup and each new one also written to its file) b
   There is no `GET /agents/{id}` for now.
 - `GET /models` returns the model ids the provider lists, a JSON array (`[]` when empty); a provider error is a `502`
   with `{"error": "..."}`. `POST /agents` does not check its model against it.
+- `POST /workspaces` takes `{"image": "..."}` and forwards it to the dispatcher's `CreateWorkspace`; it returns `201` and
+  `{"id": "...", "image": "..."}`. `GET /workspaces` forwards `ListWorkspaces` and returns a JSON array of the same
+  objects (`[]` when empty, no order). The router keeps no workspace state and does not check the image (the dispatcher
+  does). A body that does not decode is a `400`; any failed dispatcher call is a `502` with `{"error": "..."}`.
 - `GET /tools` returns the schema of every built-in tool (`tool.All()`), a JSON array of `tool.Schema` with its Go
   field names as keys (`Name`, `Description`, `Parameters`); `Run` is not sent. An error is a `500` with
   `{"error": "..."}`.
-- `POST /sessions` takes `{"agent": "<agent id>", "prompt": "..."}` (an empty prompt is accepted), creates the session,
-  appends the prompt, starts the run (`run`) and returns `201` and
+- `POST /sessions` takes `{"agent": "<agent id>", "prompt": "...", "workspace": "<workspace id>"}` (an empty prompt is
+  accepted; `workspace` is required). After the agent check it calls the dispatcher's `GetWorkspace`: `NotFound` (an
+  unknown or empty id) is a `400` with the dispatcher's message (`unknown workspace "<id>"`), any other error a `502` with its text. Only then it creates the
+  session (nothing is written for a refused request), appends the prompt, starts the run (`run`) and returns `201` and
   `{"id": "<uuid>"}` at once. A failed file write (`session.New` or the prompt) is a `500`: the session is not kept and
   no run starts. `Run` sets the status (`succeeded` or `failed`); the goroutine
   only logs its error with `log.Print`. Nothing cancels a run: a stopped router kills its runs, and at the next start
@@ -206,7 +226,7 @@ loaded by `session.Load` at startup and each new one also written to its file) b
   error text instead. `api.js` (`request`: GET or POST JSON, returns the body or the API's error text) and `form.js`
   (`field`) are shared; there is one file per tab otherwise.
 - Errors are `{"error": "..."}`: bad JSON, an unknown tool name, or (for a session) an agent id that is not a uuid or
-  not known is a 400; an unknown or malformed session id is a 404.
+  not known, or a workspace the dispatcher does not know, is a 400; an unknown or malformed session id is a 404.
 
 ## Facts: the Chat Completions context
 
@@ -224,27 +244,51 @@ loaded by `session.Load` at startup and each new one also written to its file) b
 ## Next
 
 Dispatch. The router sends each tool call over gRPC to a dispatcher, a separate process that holds the tool
-instances. A tool is a function there: it may start a Docker container (one per call, the session's workspace
-mounted) or run directly. The router never runs tool logic (SPEC §1, D2). The contract:
+instances. A tool is a function there; `bash` starts one Docker container per call, with its workspace mounted
+(item 4); `read`, `write` and `subagent` run directly. The router never runs tool logic (SPEC §1, D2). The
+contract below is the built one. The contract:
 ```proto
 service Dispatcher {
   rpc Call(Request) returns (Result);
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (Workspace);
+  rpc GetWorkspace(GetWorkspaceRequest) returns (Workspace);
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResult);
 }
 
 message Request {
-  string session_id = 1; // the dispatcher finds the session's workspace from it
-  string call_id    = 2; // also the idempotency key (D23)
-  string name       = 3; // the tool
-  string arguments  = 4; // the model's JSON, passed through
+  string session_id   = 1; // the session
+  string call_id      = 2; // also the idempotency key (D23)
+  string name         = 3; // the tool
+  string arguments    = 4; // the model's JSON, passed through
+  string workspace_id = 5; // the workspace the tool runs in
 }
 
 message Result {
   string output = 1;
   uint32 code   = 2; // 0 = success; a Docker tool returns the container's exit code
 }
+
+message CreateWorkspaceRequest {
+  string image = 1; // required
+}
+
+message GetWorkspaceRequest {
+  string id = 1;
+}
+
+message Workspace {
+  string id    = 1;
+  string image = 2;
+}
+
+message ListWorkspacesRequest {}
+
+message ListWorkspacesResult {
+  repeated Workspace workspaces = 1; // no order guaranteed
+}
 ```
 A tool error is a `Result` with `code != 0`, sent to the model. A dispatcher error (dispatcher down, unknown
-tool) is a gRPC status error, handled by the router (D24). The model sees only text, so the router
+tool, empty or unknown workspace) is a gRPC status error, handled by the router (D24). The model sees only text, so the router
 writes a non-zero code into the tool message; how comes with the loop. Large outputs (D25), streaming output and tool
 listing are left out until their piece. MCP was weighed and set aside: its gains (tool discovery, reuse of existing
 servers) do not apply, and it is a large dependency with its own session state.
@@ -256,10 +300,35 @@ Layout: one Go module. The two apps are `cmd/router` and `cmd/dispatcher`; the l
 
 Plan, bottom-up; one piece is one change, and each lists the decisions it needs (pieces 1-3, 5 and 6.1-6.2, tools, the
 server, `cmd/dispatcher`, `cmd/router`, `loop` and `api` agents and sessions, are built):
-4. **A Docker tool** (deferred). A function that runs `docker run --rm` through `os/exec`, the session's workspace
-   mounted, arguments on stdin, exit code as `code`. Needs: workspace storage (Open), the image, the network
-   policy, how Docker's own failures (exit 125-127) are reported: a non-zero code with the message, or a way for
-   `Run` to report them.
+4. **Workspaces and the Docker tools** (deferred). Docker is the sandbox (not a WSL distro). A workspace is a host
+   folder, `store.Workspaces()/<id>`, mounted at `/work` (the `workspace.Mount` constant) in the `bash` container, and opened directly by `read` and `write` through
+   `os.Root` (see the tools above): one filesystem view for the three, and no host paths for the model (a live run
+   failed because the model used WSL paths `/mnt/c/...`, which were taken as relative, so `write` and `bash` saw
+   different filesystems). Paths are relative to `/work`; a leading `/work/` is stripped, other absolute paths are an
+   error. Only `bash` is isolated in a container: the isolation that matters is the model's commands.
+   - A workspace is a struct `workspace.Workspace{ID, Image}` with a `Path()` method (the folder). The image
+     is required. The dispatcher owns workspaces; the router only forwards the requests over gRPC
+     (D2). A session has a required workspace.
+   - `Create` makes the folder and appends `{"id":...,"image":...}` to `store.Workspaces()/workspaces.jsonl`, one
+     file for all workspaces, outside every mount. The dispatcher loads it at startup into a map by id. A bad line
+     fails the startup with its line number. There is no delete: a workspace stays on disk until the folder is
+     removed by hand.
+   - `sandbox.Run(ctx, w, command...) (output, code, err)` starts one container per call: `docker run -q --rm
+     -v <w.Path()>:/work -w /work <w.Image> <command...>`, for `bash` (`-q`: image pull
+     progress is not part of the output). `code` is the
+     container's exit code; `err` is only for Docker's own failures. The image has bash and coreutils; the dispatcher's
+     caller supplies it.
+   - Network: Docker's default bridge, so `pip install` works. Known cost: the model's commands can reach the internet
+     and the host's network, and can send the workspace out. No memory, cpu or process limits for now: a runaway
+     command can load the host.
+   Needs, all in Open: the API names.
+   Built so far: `store.Workspaces()`, the `workspace` package (`Workspace`, `Load`, `Create`, `Get`, `List`; the map is
+   behind a mutex), `sandbox.Run`, and the dispatcher side: `CreateWorkspace`, `GetWorkspace`, `ListWorkspaces`, `workspace_id` on `Request`, the
+   workspace passed to every tool's `Run`. `bash` runs on `sandbox`, `read` and `write` on `os.Root`. A session
+   has a required workspace (checked at creation, persisted in its header) and the loop sends it as `workspace_id`;
+   `subagent` creates its child on the parent's workspace. A cancelled `ctx` kills the `docker run` client and
+   `Run` returns `ctx.Err()`; the container is not stopped and keeps running until its command ends (a fix needs
+   `--name` and `docker rm -f`). A command that itself exits 125 is taken for a Docker failure.
 5. **The session loop.** Built (`loop`, above).
 6. **The router API**, in three changes (HTTP, `cmd/router`):
    1. Agents. Built (`api`, above).
@@ -289,10 +358,13 @@ Deferred):
   nil there; `loop` covers the tool round.
 - **`-race` is unavailable** on the development machine (no cgo): the locks in `session` and `api` are checked by
   reading only.
-- **Workspace storage.** Who owns it (the dispatcher, from the `session_id`?) and when is it deleted (with the
-  session?).
-- **`bash` output and children.** The whole output is held in memory, and a command's children can outlive a timeout;
-  both go with the Docker tool.
+- **Workspaces (item 4), left to decide.** Recommendations are marked.
+  - Left: the dashboard's session form (it sends no `workspace`, so
+    it gets a `400`).
+  - One workspace shared by several sessions (a subagent on its parent's files): allowed, no guard (recommended; built for `subagent`: the parent waits for the child, so they do not write at the
+    same time).
+  - `session_id` stays on `Request` though nothing reads it.
+- **`bash` output.** The whole output is held in memory.
 - **`developer` or `system` role.** Some OpenAI-compatible servers reject `developer`; `provider` has only `System`.
 
 ## Deferred

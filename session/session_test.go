@@ -26,7 +26,7 @@ func start(t *testing.T) *Session {
 	t.Helper()
 	isolate(t)
 
-	s, err := New(&agent.Agent{})
+	s, err := New(&agent.Agent{}, "w1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func start(t *testing.T) *Session {
 func TestNew(t *testing.T) {
 	s := start(t)
 
-	other, err := New(&agent.Agent{})
+	other, err := New(&agent.Agent{}, "w1")
 	if err != nil {
 		t.Fatal(err)
 	}

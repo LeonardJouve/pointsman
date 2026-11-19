@@ -16,8 +16,9 @@ import (
 )
 
 type header struct {
-	Created time.Time `json:"created"`
-	Agent   uuid.UUID `json:"agent"`
+	Created     time.Time `json:"created"`
+	Agent       uuid.UUID `json:"agent"`
+	WorkspaceID string    `json:"workspace"`
 }
 
 // kind is the key of a line's only field.
@@ -31,7 +32,7 @@ const (
 
 // create starts the session's file with its header; it fails if the file exists.
 func create(s *Session) error {
-	return writeLines(s.ID, os.O_CREATE|os.O_EXCL|os.O_WRONLY, kindHeader, header{s.Created, s.Agent.ID})
+	return writeLines(s.ID, os.O_CREATE|os.O_EXCL|os.O_WRONLY, kindHeader, header{s.Created, s.Agent.ID, s.WorkspaceID})
 }
 
 // appendMessages writes the messages in one write, so they are all in the file or none.
@@ -125,7 +126,14 @@ func load(file string, agents agent.Agents) (*Session, error) {
 		return nil, fmt.Errorf("unknown agent %s", h.Agent)
 	}
 
-	s := &Session{ID: id, Created: h.Created, Agent: a, status: Running, changed: make(chan struct{})}
+	s := &Session{
+		ID:          id,
+		Created:     h.Created,
+		Agent:       a,
+		WorkspaceID: h.WorkspaceID,
+		status:      Running,
+		changed:     make(chan struct{}),
+	}
 
 	for _, line := range lines[1:] {
 		entry, err := decode(line)

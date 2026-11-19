@@ -1,38 +1,44 @@
 @host = http://localhost:8080
 
-### Models
-# @name models
-GET {{host}}/models
+### List agents
+GET {{host}}/agents
 
-### Create an agent with the first model
-# @name createAgent
+### Create a workspace
+# @name createWorkspace
+POST {{host}}/workspaces
+Content-Type: application/json
+
+{
+  "image": "python:3-slim"
+}
+
+### List workspaces
+GET {{host}}/workspaces
+
+### Create a coding agent with the first model
+# @name createCodingAgent
 # @ref models
 POST {{host}}/agents
 Content-Type: application/json
 
 {
-  "name": "assistant",
+  "name": "coder",
   "model": "{{models[0]}}",
-  "prompt": "You are a helpful assistant.",
-  "tools": ["read", "write"]
+  "prompt": "You are a careful Python developer. Run the tests and fix what fails.",
+  "tools": ["read", "write", "bash"]
 }
 
-### List agents
-GET {{host}}/agents
-
-### Create a session on the agent above
-# @name createSession
+### Create a coding session on the coding agent
+# @name createCodingSession
 POST {{host}}/sessions
 Content-Type: application/json
 
 {
-  "agent": "{{createAgent.id}}",
-  "prompt": "Read README.md, then read docs/design.md, then write a summary of both to summary.md. Read one file at a time."
+  "agent": "{{createCodingAgent.id}}",
+  "workspace": "{{createWorkspace.id}}",
+  "prompt": "Write reverse(s) in Python in reverse/reverse.py with a unittest test. Run python -m unittest there, fix any failure."
 }
 
-### Stream the session events (SSE)
-GET {{host}}/sessions/{{createSession.id}}/events
-
-### Get the session: status and messages
-GET {{host}}/sessions/{{createSession.id}}
+### Stream the coding session events (SSE)
+GET {{host}}/sessions/{{createCodingSession.id}}/events
 

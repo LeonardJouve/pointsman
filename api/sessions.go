@@ -10,7 +10,11 @@ import (
 	"time"
 	"uuid"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/LeonardJouve/pointsman/agent"
+	"github.com/LeonardJouve/pointsman/dispatch"
 	"github.com/LeonardJouve/pointsman/loop"
 	"github.com/LeonardJouve/pointsman/provider"
 	"github.com/LeonardJouve/pointsman/session"
@@ -20,8 +24,9 @@ import (
 const keepAliveInterval = 15 * time.Second
 
 type sessionRequest struct {
-	Agent  string `json:"agent"`
-	Prompt string `json:"prompt"`
+	Agent       string `json:"agent"`
+	Prompt      string `json:"prompt"`
+	WorkspaceID string `json:"workspace"`
 }
 
 type sessionResponse struct {
@@ -60,7 +65,18 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := session.New(a)
+	request := &dispatch.GetWorkspaceRequest{Id: body.WorkspaceID}
+	if _, err := s.dispatcher.GetWorkspace(r.Context(), request); err != nil {
+		if status.Code(err) == codes.NotFound {
+			fail(w, http.StatusBadRequest, status.Convert(err).Message())
+		} else {
+			fail(w, http.StatusBadGateway, err.Error())
+		}
+
+		return
+	}
+
+	created, err := session.New(a, body.WorkspaceID)
 	if err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 

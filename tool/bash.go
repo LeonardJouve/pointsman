@@ -1,23 +1,23 @@
 package tool
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 
+	"github.com/LeonardJouve/pointsman/sandbox"
+	"github.com/LeonardJouve/pointsman/workspace"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// pipeDelay is how long after the shell ends or is killed the tool waits for the output pipe to close.
-const pipeDelay = time.Second
+// timeoutCode is the exit code of coreutils timeout when it stops the command.
+const timeoutCode = 124
 
 type bashArguments struct {
 	Command string `json:"command" jsonschema:"Shell command to execute"`
@@ -30,11 +30,10 @@ func Bash() (Tool, error) {
 		return Tool{}, err
 	}
 
-	description := fmt.Sprintf(`Execute a bash command in the current working directory. Returns stdout and stderr.
+	description := fmt.Sprintf(`Execute a bash command in the workspace. Returns stdout and stderr.
 Output is truncated to last %d lines or %dKB (whichever is hit first).
-If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
-		maxLines, maxBytes/1024,
-	)
+If truncated, full output is saved to a file in the workspace. Optionally provide a timeout in seconds.
+Each call runs in a new container: only files in the workspace persist between calls.`, maxLines, maxBytes/1024)
 
 	return Tool{
 		Schema: New("bash", description, schema),
@@ -42,41 +41,37 @@ If truncated, full output is saved to a temp file. Optionally provide a timeout 
 	}, nil
 }
 
-func bash(ctx context.Context, arguments string) (string, uint32) {
+func bash(ctx context.Context, w workspace.Workspace, arguments string) (string, uint32) {
 	var args bashArguments
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
 		return fail(err)
 	}
 
-	runCtx := ctx
+	command := []string{"bash", "-c", "exec 2>&1; " + args.Command}
 	if args.Timeout > 0 {
-		var cancel context.CancelFunc
-		runCtx, cancel = context.WithTimeout(ctx, time.Duration(args.Timeout)*time.Second)
-		defer cancel()
+		command = append([]string{"timeout", strconv.FormatUint(uint64(args.Timeout), 10)}, command...)
 	}
 
-	var output bytes.Buffer
-	cmd := exec.CommandContext(runCtx, "bash", "-c", args.Command)
-	cmd.Stdout = &output
-	cmd.Stderr = &output
-	cmd.WaitDelay = pipeDelay
+	output, code, err := sandbox.Run(ctx, w, command...)
 
-	err := cmd.Run()
-
-	code, status, err := execStatus(ctx, runCtx, err, args.Timeout)
-	if err != nil {
+	var status string
+	switch {
+	case ctx.Err() != nil:
+		code, status = 1, "Command aborted"
+	case err != nil:
 		return fail(err)
+	case code == timeoutCode && args.Timeout > 0:
+		code, status = 1, fmt.Sprintf("Command timed out after %d seconds", args.Timeout)
 	}
 
-	full := strings.TrimSuffix(output.String(), "\n")
-	text, note := tail(full)
+	text, note := tail(strings.TrimSuffix(output, "\n"))
 	if note != "" {
-		path, err := saveLog(output.Bytes())
+		name, err := saveLog(w, output)
 		if err != nil {
 			return fail(err)
 		}
 
-		text += fmt.Sprintf("\n\n[%s. Full output: %s]", note, path)
+		text += fmt.Sprintf("\n\n[%s. Full output: %s]", note, name)
 	}
 
 	parts := slices.DeleteFunc([]string{text, status}, func(part string) bool { return part == "" })
@@ -87,39 +82,25 @@ func bash(ctx context.Context, arguments string) (string, uint32) {
 	return strings.Join(parts, "\n\n"), code
 }
 
-// execStatus is the exit code and status line of a finished command, or err when the tool itself failed.
-func execStatus(ctx, runCtx context.Context, err error, timeout uint) (uint32, string, error) {
-	var code uint32
-	var status string
-	var exit *exec.ExitError
-	switch {
-	case ctx.Err() != nil:
-		code, status = 1, "Command aborted"
-	case runCtx.Err() != nil:
-		code, status = 1, fmt.Sprintf("Command timed out after %d seconds", timeout)
-	case errors.As(err, &exit):
-		code = uint32(max(exit.ExitCode(), 1))
-	case err != nil && !errors.Is(err, exec.ErrWaitDelay):
-		return 0, "", err
+// saveLog writes the output to a new bash-*.log file in the workspace and returns its name there.
+func saveLog(w workspace.Workspace, output string) (string, error) {
+	path, err := w.Path()
+	if err != nil {
+		return "", err
 	}
 
-	return code, status, nil
-}
-
-// saveLog writes the output to a new bash-*.log temp file and returns its path.
-func saveLog(output []byte) (string, error) {
-	file, err := os.CreateTemp("", "bash-*.log")
+	file, err := os.CreateTemp(path, "bash-*.log")
 	if err != nil {
 		return "", err
 	}
 
 	defer file.Close()
 
-	if _, err := file.Write(output); err != nil {
+	if _, err := file.WriteString(output); err != nil {
 		return "", err
 	}
 
-	return file.Name(), nil
+	return filepath.Base(file.Name()), nil
 }
 
 // tail is the end of the text: the last maxLines lines and at most maxBytes bytes, and a note on the cut

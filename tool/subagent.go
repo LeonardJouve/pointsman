@@ -11,12 +11,19 @@ import (
 	"strings"
 
 	"github.com/LeonardJouve/pointsman/env"
+	"github.com/LeonardJouve/pointsman/workspace"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
 type subagentArguments struct {
 	Agent  string `json:"agent" jsonschema:"Id of the agent to run"`
 	Prompt string `json:"prompt" jsonschema:"What the agent must do"`
+}
+
+// sessionRequest is the body of POST /sessions: the model's arguments and the parent's workspace.
+type sessionRequest struct {
+	subagentArguments
+	Workspace string `json:"workspace"`
 }
 
 type sessionReply struct {
@@ -48,7 +55,7 @@ func Subagent() (Tool, error) {
 }
 
 // subagent starts a session on the router, waits for it to end and returns its last assistant text.
-func subagent(ctx context.Context, arguments string) (string, uint32) {
+func subagent(ctx context.Context, w workspace.Workspace, arguments string) (string, uint32) {
 	var args subagentArguments
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
 		return fail(err)
@@ -61,7 +68,7 @@ func subagent(ctx context.Context, arguments string) (string, uint32) {
 
 	router := fmt.Sprintf("http://%s", addr)
 
-	id, err := createSession(ctx, router, args)
+	id, err := createSession(ctx, router, sessionRequest{args, w.ID})
 	if err != nil {
 		return fail(err)
 	}
@@ -74,8 +81,8 @@ func subagent(ctx context.Context, arguments string) (string, uint32) {
 	return answer, 0
 }
 
-func createSession(ctx context.Context, router string, args subagentArguments) (string, error) {
-	body, err := json.Marshal(args)
+func createSession(ctx context.Context, router string, session sessionRequest) (string, error) {
+	body, err := json.Marshal(session)
 	if err != nil {
 		return "", err
 	}
