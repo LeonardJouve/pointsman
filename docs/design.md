@@ -118,7 +118,8 @@ them). `read`, `write` and `subagent` run directly in the dispatcher, no Docker;
   cancelled `ctx` ends the wait, not the child. No parent link, no recursion guard.
 - `bash` is pi's: parameters `command` and `timeout` (seconds, 0 or absent: none). It runs `sandbox.Run` with
   `bash -c <command>`, wrapped as `timeout <n> bash -c <command>` (coreutils, inside the container) when a timeout is
-  set; stdout and stderr in one buffer. The tail is kept at the read limits; when it cuts, the full output goes to a
+  set; stdout and stderr in one buffer (the shell merges stderr into stdout first, because Docker does not keep the
+  order of the two streams). The tail is kept at the read limits; when it cuts, the full output goes to a
   new `bash-*.log` file in the workspace folder (`/work/bash-*.log` for the model), named relative to `/work` in pi's
   note and never removed. Exit 124 with a timeout set adds `Command timed out after N seconds`, code 1 (a command's own
   124 is taken for it). A cancelled `ctx` adds `Command aborted`, code 1: the docker client is killed, the container

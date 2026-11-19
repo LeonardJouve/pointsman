@@ -47,7 +47,7 @@ func bash(ctx context.Context, w workspace.Workspace, arguments string) (string,
 		return fail(err)
 	}
 
-	command := []string{"bash", "-c", args.Command}
+	command := []string{"bash", "-c", "exec 2>&1; " + args.Command}
 	if args.Timeout > 0 {
 		command = append([]string{"timeout", strconv.FormatUint(uint64(args.Timeout), 10)}, command...)
 	}

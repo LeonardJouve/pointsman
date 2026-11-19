@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,6 +40,16 @@ func newWorkspace(t *testing.T) workspace.Workspace {
 	return w
 }
 
+// interleaved is the lines o1, e1, o2, e2, ... up to n, joined by newlines.
+func interleaved(n int) string {
+	lines := make([]string, 0, 2*n)
+	for i := 1; i <= n; i++ {
+		lines = append(lines, fmt.Sprintf("o%d", i), fmt.Sprintf("e%d", i))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 func TestBash(t *testing.T) {
 	w := newWorkspace(t)
 
@@ -59,6 +70,10 @@ func TestBash(t *testing.T) {
 		code    uint32
 	}{
 		{"both streams", context.Background(), "echo out; echo err >&2", 0, "out\nerr", 0},
+		{
+			"stream order", context.Background(),
+			"for i in $(seq 1 50); do echo o$i; echo e$i >&2; done", 0, interleaved(50), 0,
+		},
 		{"exit code", context.Background(), "echo bad; exit 3", 0, "bad", 3},
 		{"no output", context.Background(), "true", 0, "(no output)", 0},
 		{"timeout", context.Background(), "echo start; sleep 5", 1, "start\n\nCommand timed out after 1 seconds", 1},
