@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/LeonardJouve/pointsman/env"
+	"github.com/LeonardJouve/pointsman/workspace"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
@@ -48,7 +49,7 @@ func Subagent() (Tool, error) {
 }
 
 // subagent starts a session on the router, waits for it to end and returns its last assistant text.
-func subagent(ctx context.Context, arguments string) (string, uint32) {
+func subagent(ctx context.Context, w workspace.Workspace, arguments string) (string, uint32) {
 	var args subagentArguments
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
 		return fail(err)

@@ -110,7 +110,7 @@ caller appends the user message first and reads the answer from the last message
 `tool.Subagent()` and `tool.Bash()`, returning the schema-generation error; `tool.All()` returns every built-in tool, the one list,
 and the first constructor error):
 copies of pi's, same names, parameters, descriptions and limits (2000 lines or 50KB, from the constants that enforce
-them). They run directly in the dispatcher, no Docker.
+them). `read`, `write` and `subagent` run directly in the dispatcher, no Docker; only `bash` starts a container.
 - `subagent` is not from pi: parameters `agent` (an agent id) and `prompt`. `Run` reads `ROUTER_ADDR` (not at
   construction: the router builds the schema without it; unset is a code 1 failure), POSTs `/sessions`, reads
   `GET /sessions/{id}/events` until the `status` frame and returns the `content` of the last `message` frame, code 0.
@@ -132,8 +132,12 @@ them). They run directly in the dispatcher, no Docker.
 - `read` continues with one note for every cut (line cap, byte cap or `limit`): `[Showing lines A-B of N. Use
   offset=X to continue.]`, instead of pi's three variants.
 - Errors (missing file, bad offset, bad arguments JSON) are a `Result` with code 1 and the message as output.
-- Paths: relative ones start at `root` (`"."`, in `tool/tool.go`); absolute paths and `..` are not rejected, as in
-  pi. Confinement and the root come with workspaces.
+- `read` and `write` are Go over `os.Root` on the workspace folder (`Workspace.Path()`), opened per call and closed
+  after. `os.Root` refuses `..`, absolute paths and symlinks leaving the folder, which matters because the model's
+  `bash` can create a symlink to a host file. Paths are relative to `/work` (what the model sees): `relative` in
+  `tool/tool.go` strips a leading `/work/`; any other absolute path is an error ("path must be relative to /work").
+  `write` creates parent directories (0o755) and writes the file (0o644). On Windows `os.Root` takes `\` as a
+  separator too, so a `\` path is confined like a `/` one.
 
 **cmd/dispatcher**: listens on `DISPATCHER_ADDR` and serves `dispatch.NewServer` with the tools from `tool.All()` and
 the workspaces from `workspace.Load()`; their errors are fatal.
@@ -230,8 +234,8 @@ loaded by `session.Load` at startup and each new one also written to its file) b
 ## Next
 
 Dispatch. The router sends each tool call over gRPC to a dispatcher, a separate process that holds the tool
-instances. A tool is a function there; `read`, `write` and `bash` will each start one Docker container per call, with
-its workspace mounted (item 4); `subagent` runs directly. The router never runs tool logic (SPEC §1, D2). The
+instances. A tool is a function there; `bash` starts one Docker container per call, with its workspace mounted
+(item 4); `read`, `write` and `subagent` run directly. The router never runs tool logic (SPEC §1, D2). The
 contract below is the built one. The contract:
 ```proto
 service Dispatcher {
@@ -274,10 +278,11 @@ Layout: one Go module. The two apps are `cmd/router` and `cmd/dispatcher`; the l
 Plan, bottom-up; one piece is one change, and each lists the decisions it needs (pieces 1-3, 5 and 6.1-6.2, tools, the
 server, `cmd/dispatcher`, `cmd/router`, `loop` and `api` agents and sessions, are built):
 4. **Workspaces and the Docker tools** (deferred). Docker is the sandbox (not a WSL distro). A workspace is a host
-   folder, `store.Workspaces()/<id>`, mounted at `/work` in every container: one filesystem view for `read`, `write`
-   and `bash`, and no host paths for the model (a live run failed because the model used WSL paths `/mnt/c/...`,
-   which `resolve()` on Windows treated as relative, so `write` and `bash` saw different filesystems). Paths are
-   relative to `/work`.
+   folder, `store.Workspaces()/<id>`, mounted at `/work` (the `workspace.Mount` constant) in the `bash` container, and opened directly by `read` and `write` through
+   `os.Root` (see the tools above): one filesystem view for the three, and no host paths for the model (a live run
+   failed because the model used WSL paths `/mnt/c/...`, which were taken as relative, so `write` and `bash` saw
+   different filesystems). Paths are relative to `/work`; a leading `/work/` is stripped, other absolute paths are an
+   error. Only `bash` is isolated in a container: the isolation that matters is the model's commands.
    - A workspace is a struct `workspace.Workspace{ID, Image}` with a `Path()` method (the folder). The image
      is required. The dispatcher owns workspaces; the router only forwards the requests over gRPC
      (D2). A session can start with a workspace.
@@ -286,7 +291,7 @@ server, `cmd/dispatcher`, `cmd/router`, `loop` and `api` agents and sessions, ar
      fails the startup with its line number. There is no delete: a workspace stays on disk until the folder is
      removed by hand.
    - `sandbox.Run(ctx, w, command...) (output, code, err)` starts one container per call: `docker run -q --rm
-     -v <w.Path()>:/work -w /work <w.Image> <command...>`, for `read`, `write` and `bash` alike (`-q`: image pull
+     -v <w.Path()>:/work -w /work <w.Image> <command...>`, for `bash` (`-q`: image pull
      progress is not part of the output). `code` is the
      container's exit code; `err` is only for Docker's own failures. The image has bash and coreutils; the dispatcher's
      caller supplies it.

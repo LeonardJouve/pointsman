@@ -15,7 +15,7 @@ import (
 // A command that exits 125 is taken for it.
 const dockerFailed = 125
 
-// Run runs the command in a new container of the workspace's image, with the workspace folder at /work.
+// Run runs the command in a new container of the workspace's image, with the workspace folder at workspace.Mount.
 // A failing command is a non-zero code; err is only for Docker's own failures.
 // A cancelled ctx kills the docker client, not the container.
 func Run(ctx context.Context, w workspace.Workspace, command ...string) (string, uint32, error) {
@@ -24,7 +24,8 @@ func Run(ctx context.Context, w workspace.Workspace, command ...string) (string,
 		return "", 0, err
 	}
 
-	args := append([]string{"run", "-q", "--rm", "-v", fmt.Sprintf("%s:/work", path), "-w", "/work", w.Image}, command...)
+	volume := fmt.Sprintf("%s:%s", path, workspace.Mount)
+	args := append([]string{"run", "-q", "--rm", "-v", volume, "-w", workspace.Mount, w.Image}, command...)
 
 	var output bytes.Buffer
 

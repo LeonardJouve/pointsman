@@ -15,7 +15,10 @@ import (
 
 const file = "workspaces.jsonl"
 
-// Workspace is a host folder mounted at /work in each container of its tools.
+// Mount is where the workspace folder appears in the containers.
+const Mount = "/work"
+
+// Workspace is a host folder mounted at Mount in each container of its tools.
 type Workspace struct {
 	ID    string `json:"id"`
 	Image string `json:"image"`

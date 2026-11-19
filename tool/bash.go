@@ -30,7 +30,7 @@ func Bash() (Tool, error) {
 		return Tool{}, err
 	}
 
-	description := fmt.Sprintf(`Execute a bash command in the workspace ("/work"). Returns stdout and stderr.
+	description := fmt.Sprintf(`Execute a bash command in the workspace. Returns stdout and stderr.
 Output is truncated to last %d lines or %dKB (whichever is hit first).
 If truncated, full output is saved to a file in the workspace. Optionally provide a timeout in seconds.
 Each call runs in a new container: only files in the workspace persist between calls.`, maxLines, maxBytes/1024)

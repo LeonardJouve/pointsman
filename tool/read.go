@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/LeonardJouve/pointsman/workspace"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
@@ -16,7 +17,7 @@ const (
 )
 
 type readArguments struct {
-	Path   string `json:"path" jsonschema:"Path to the file to read (relative or absolute)"`
+	Path   string `json:"path" jsonschema:"Path to the file to read (relative to the workspace)"`
 	Offset int    `json:"offset,omitzero" jsonschema:"Line number to start reading from (1-indexed)"`
 	Limit  int    `json:"limit,omitzero" jsonschema:"Maximum number of lines to read"`
 }
@@ -37,13 +38,30 @@ func Read() (Tool, error) {
 	}, nil
 }
 
-func read(ctx context.Context, arguments string) (string, uint32) {
+func read(ctx context.Context, w workspace.Workspace, arguments string) (string, uint32) {
 	var args readArguments
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
 		return fail(err)
 	}
 
-	content, err := os.ReadFile(resolve(args.Path))
+	path, err := relative(args.Path)
+	if err != nil {
+		return fail(err)
+	}
+
+	folder, err := w.Path()
+	if err != nil {
+		return fail(err)
+	}
+
+	root, err := os.OpenRoot(folder)
+	if err != nil {
+		return fail(err)
+	}
+
+	defer root.Close()
+
+	content, err := root.ReadFile(path)
 	if err != nil {
 		return fail(err)
 	}
