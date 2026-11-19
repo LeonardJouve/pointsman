@@ -6,7 +6,9 @@ option go_package = "github.com/LeonardJouve/pointsman/dispatch";
 
 service Dispatcher {
   rpc Call(Request) returns (Result);
-  rpc CreateWorkspace(CreateWorkspaceRequest) returns (CreateWorkspaceResult);
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (Workspace);
+  rpc GetWorkspace(GetWorkspaceRequest) returns (Workspace);
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResult);
 }
 
 message Request {
@@ -26,6 +28,17 @@ message CreateWorkspaceRequest {
   string image = 1;
 }
 
-message CreateWorkspaceResult {
+message GetWorkspaceRequest {
   string id = 1;
+}
+
+message Workspace {
+  string id    = 1;
+  string image = 2;
+}
+
+message ListWorkspacesRequest {}
+
+message ListWorkspacesResult {
+  repeated Workspace workspaces = 1;
 }

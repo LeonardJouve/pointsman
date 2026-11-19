@@ -123,6 +123,19 @@ func (ws *Workspaces) Create(image string) (Workspace, error) {
 	return w, nil
 }
 
+// List returns every workspace, in no particular order.
+func (ws *Workspaces) List() []Workspace {
+	ws.mutex.Lock()
+	defer ws.mutex.Unlock()
+
+	list := make([]Workspace, 0, len(ws.workspaces))
+	for _, w := range ws.workspaces {
+		list = append(list, w)
+	}
+
+	return list
+}
+
 func (ws *Workspaces) Get(id string) (Workspace, bool) {
 	ws.mutex.Lock()
 	defer ws.mutex.Unlock()

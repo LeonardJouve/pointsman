@@ -39,7 +39,23 @@ func (f fakeDispatcher) CreateWorkspace(
 	_ context.Context,
 	_ *dispatch.CreateWorkspaceRequest,
 	_ ...grpc.CallOption,
-) (*dispatch.CreateWorkspaceResult, error) {
+) (*dispatch.Workspace, error) {
+	return nil, nil
+}
+
+func (f fakeDispatcher) GetWorkspace(
+	_ context.Context,
+	_ *dispatch.GetWorkspaceRequest,
+	_ ...grpc.CallOption,
+) (*dispatch.Workspace, error) {
+	return nil, nil
+}
+
+func (f fakeDispatcher) ListWorkspaces(
+	_ context.Context,
+	_ *dispatch.ListWorkspacesRequest,
+	_ ...grpc.CallOption,
+) (*dispatch.ListWorkspacesResult, error) {
 	return nil, nil
 }
 

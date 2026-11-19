@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,6 +48,37 @@ func TestCreateGet(t *testing.T) {
 
 	if _, ok := ws.Get("missing"); ok {
 		t.Error("found a missing workspace")
+	}
+}
+
+func TestList(t *testing.T) {
+	ws := setup(t)
+
+	if got := ws.List(); len(got) != 0 {
+		t.Errorf("got %v, want no workspace", got)
+	}
+
+	a, err := ws.Create("python:3-slim")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := ws.Create("alpine")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := map[Workspace]struct{}{}
+	for _, w := range ws.List() {
+		got[w] = struct{}{}
+	}
+
+	want := map[Workspace]struct{}{
+		a: {},
+		b: {},
+	}
+	if !maps.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }
 

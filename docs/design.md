@@ -54,8 +54,8 @@ folders; all create the folder.
 implements the `Dispatcher` service. `Call` looks the tool up by `Schema.Name` (a name is written once) and the
 workspace by `workspace_id`, runs the tool in it and returns the `Result`. Every call needs a known workspace: an
 unknown tool, and an empty or unknown workspace id, are plain Go errors that reach the router as gRPC `Unknown`; a
-tool never receives a zero `Workspace`. `CreateWorkspace` calls `Workspaces.Create` and returns the id; its error
-(empty image, disk) is returned as is. The loop writes a non-zero code into the tool message. Tests call the methods
+tool never receives a zero `Workspace`. `CreateWorkspace` calls `Workspaces.Create` and returns the `Workspace`; its error
+(empty image, disk) is returned as is. `GetWorkspace` returns the workspace of an id with `Workspaces.Get`; an unknown id (or an empty one) is a `NotFound` status error, while `Call` still returns a plain error. `ListWorkspaces` returns every workspace, in no particular order. The loop writes a non-zero code into the tool message. Tests call the methods
 directly, without a gRPC server.
 
 **session**: `Session{ID, Agent, Created}` (`Agent` is a `*agent.Agent`) and an unexported log.
@@ -241,7 +241,9 @@ contract below is the built one. The contract:
 ```proto
 service Dispatcher {
   rpc Call(Request) returns (Result);
-  rpc CreateWorkspace(CreateWorkspaceRequest) returns (CreateWorkspaceResult);
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (Workspace);
+  rpc GetWorkspace(GetWorkspaceRequest) returns (Workspace);
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResult);
 }
 
 message Request {
@@ -261,8 +263,19 @@ message CreateWorkspaceRequest {
   string image = 1; // required
 }
 
-message CreateWorkspaceResult {
+message GetWorkspaceRequest {
   string id = 1;
+}
+
+message Workspace {
+  string id    = 1;
+  string image = 2;
+}
+
+message ListWorkspacesRequest {}
+
+message ListWorkspacesResult {
+  repeated Workspace workspaces = 1; // no order guaranteed
 }
 ```
 A tool error is a `Result` with `code != 0`, sent to the model. A dispatcher error (dispatcher down, unknown
